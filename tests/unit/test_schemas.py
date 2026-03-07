@@ -1,0 +1,104 @@
+"""Unit tests for Pydantic schemas."""
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+
+from app.models.event import AssetClass, EventType
+from app.schemas.event import EventBatchCreate, EventCreate
+
+
+class TestEventCreate:
+    def _base_data(self, **overrides) -> dict:
+        data = {
+            "event_type": "ALLOCATION",
+            "portfolio_id": str(uuid.uuid4()),
+            "asset_id": str(uuid.uuid4()),
+            "asset_class": "PRIVATE_EQUITY",
+            "amount": "100000.00",
+            "currency": "sar",  # should be uppercased
+            "fx_rate_to_sar": "1.0",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        data.update(overrides)
+        return data
+
+    def test_valid_event(self):
+        event = EventCreate(**self._base_data())
+        assert event.event_type == EventType.ALLOCATION
+        assert event.asset_class == AssetClass.PRIVATE_EQUITY
+        assert event.currency == "SAR"  # uppercased by validator
+
+    def test_currency_uppercased(self):
+        event = EventCreate(**self._base_data(currency="usd"))
+        assert event.currency == "USD"
+
+    def test_default_event_id_generated(self):
+        event = EventCreate(**self._base_data())
+        assert isinstance(event.event_id, uuid.UUID)
+
+    def test_explicit_event_id_preserved(self):
+        fixed_id = uuid.uuid4()
+        event = EventCreate(**self._base_data(event_id=str(fixed_id)))
+        assert event.event_id == fixed_id
+
+    def test_amount_must_be_positive(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(amount="-500"))
+
+    def test_amount_zero_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(amount="0"))
+
+    def test_fx_rate_must_be_positive(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(fx_rate_to_sar="-1.0"))
+
+    def test_optional_metadata(self):
+        event = EventCreate(**self._base_data(metadata={"deal": "Series A"}))
+        assert event.metadata == {"deal": "Series A"}
+
+    def test_metadata_defaults_none(self):
+        event = EventCreate(**self._base_data())
+        assert event.metadata is None
+
+    def test_invalid_event_type_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(event_type="INVALID_TYPE"))
+
+    def test_invalid_asset_class_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(asset_class="CRYPTO"))
+
+
+class TestEventBatchCreate:
+    def _single_event_data(self) -> dict:
+        return {
+            "event_type": "ALLOCATION",
+            "portfolio_id": str(uuid.uuid4()),
+            "asset_id": str(uuid.uuid4()),
+            "asset_class": "PRIVATE_EQUITY",
+            "amount": "50000",
+            "currency": "SAR",
+            "fx_rate_to_sar": "1.0",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
+    def test_batch_with_single_event(self):
+        batch = EventBatchCreate(events=[self._single_event_data()])
+        assert len(batch.events) == 1
+
+    def test_empty_batch_rejected(self):
+        with pytest.raises(ValueError):
+            EventBatchCreate(events=[])
+
+    def test_batch_max_100(self):
+        events = [self._single_event_data() for _ in range(101)]
+        with pytest.raises(ValueError):
+            EventBatchCreate(events=events)
+
+    def test_batch_with_100_events(self):
+        events = [self._single_event_data() for _ in range(100)]
+        batch = EventBatchCreate(events=events)
+        assert len(batch.events) == 100

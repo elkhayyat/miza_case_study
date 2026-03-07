@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-miza}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-miza}
+      POSTGRES_DB: ${POSTGRES_DB:-miza_analytics}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-miza} -d ${POSTGRES_DB:-miza_analytics}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: miza-analytics:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-miza}:${POSTGRES_PASSWORD:-miza}@postgres:5432/${POSTGRES_DB:-miza_analytics}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  api:
+    image: miza-analytics:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-miza}:${POSTGRES_PASSWORD:-miza}@postgres:5432/${POSTGRES_DB:-miza_analytics}
+      REDIS_URL: redis://redis:6379/0
+      API_KEYS: ${API_KEYS:?API_KEYS must be set}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
