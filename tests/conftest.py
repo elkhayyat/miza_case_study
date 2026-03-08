@@ -5,6 +5,7 @@ Uses SQLite (aiosqlite) as the in-memory database for speed.
 Redis is mocked to avoid requiring a live Redis instance.
 """
 
+import os
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -21,6 +22,11 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.event import AssetClass, EventStatus, EventType, InvestmentEvent
+
+# ---------------------------------------------------------------------------
+# PostgreSQL test URL (set via environment variable)
+# ---------------------------------------------------------------------------
+POSTGRES_TEST_URL = os.environ.get("TEST_DATABASE_URL")
 
 # ---------------------------------------------------------------------------
 # In-memory SQLite engine for tests
@@ -157,3 +163,27 @@ async def sample_event(db_session) -> InvestmentEvent:
     db_session.add(event)
     await db_session.flush()
     return event
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL fixtures (require TEST_DATABASE_URL env var)
+# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture(scope="function")
+async def pg_engine():
+    if not POSTGRES_TEST_URL:
+        pytest.skip("TEST_DATABASE_URL not set")
+    engine = create_async_engine(POSTGRES_TEST_URL, echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def pg_session(pg_engine) -> AsyncGenerator[AsyncSession, None]:
+    factory = async_sessionmaker(pg_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+        await session.rollback()

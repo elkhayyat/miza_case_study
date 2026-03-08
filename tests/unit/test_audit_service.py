@@ -1,8 +1,14 @@
 """Unit tests for the audit service."""
 
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.audit_service import compute_payload_hash, write_audit_log
+from app.core.metrics import audit_write_failures
+from app.services.audit_service import (
+    compute_payload_hash,
+    write_audit_log,
+    write_audit_log_background,
+)
 
 
 class TestComputePayloadHash:
@@ -73,3 +79,31 @@ class TestWriteAuditLog:
             ip_address="192.168.1.1",
         )
         assert log.entity_id is None
+
+
+class TestWriteAuditLogBackground:
+    async def test_counter_increments_after_all_retries_exhausted(self):
+        """Verify audit_write_failures counter increments when all retries fail."""
+        failing_session = AsyncMock()
+        failing_session.commit = AsyncMock(side_effect=RuntimeError("db down"))
+        failing_session.__aenter__ = AsyncMock(return_value=failing_session)
+        failing_session.__aexit__ = AsyncMock(return_value=False)
+
+        factory = MagicMock()
+        factory.return_value = failing_session
+
+        before = audit_write_failures._value.get()
+
+        with patch("app.services.audit_service.asyncio.sleep", new_callable=AsyncMock):
+            await write_audit_log_background(
+                factory,
+                request_id=str(uuid.uuid4()),
+                action="CREATE_EVENT",
+                entity_type="InvestmentEvent",
+                entity_id=str(uuid.uuid4()),
+                api_key_id="test_client",
+                ip_address="127.0.0.1",
+            )
+
+        after = audit_write_failures._value.get()
+        assert after == before + 1

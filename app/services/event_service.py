@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
@@ -120,7 +121,7 @@ async def ingest_batch(
     return processed, duplicate_count, failed_count
 
 
-def amount_sar_expr() -> ColumnElement:
+def amount_sar_expr() -> ColumnElement[Any]:
     """SQL expression for amount * fx_rate_to_sar (for use in queries).
 
     This is the SQL-level equivalent of ``compute_amount_sar`` for in-memory

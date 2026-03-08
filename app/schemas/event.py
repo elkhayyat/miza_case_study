@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -27,7 +28,7 @@ class EventCreate(BaseModel):
         description="FX rate to convert currency to SAR (1.0 for SAR)",
     )
     created_at: datetime = Field(description="Event timestamp (client-side)")
-    metadata: dict | None = Field(default=None, description="Arbitrary JSON metadata")
+    metadata: dict[str, Any] | None = Field(default=None, description="Arbitrary JSON metadata")
     notes: str | None = Field(default=None, max_length=1000)
 
     @field_validator("currency")
@@ -59,7 +60,7 @@ class EventBatchCreate(BaseModel):
     events: list[EventCreate] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def check_batch_size(self):
+    def check_batch_size(self) -> "EventBatchCreate":
         max_size = get_settings().max_batch_size
         if len(self.events) > max_size:
             msg = f"Batch size {len(self.events)} exceeds maximum of {max_size}"
@@ -88,7 +89,7 @@ class EventResponse(EventBaseResponse):
     fx_rate_to_sar: Decimal
     status: EventStatus
     processed_at: datetime | None
-    metadata: dict | None
+    metadata: dict[str, Any] | None
     notes: str | None
 
     model_config = ConfigDict(from_attributes=True)

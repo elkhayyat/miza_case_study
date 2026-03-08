@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -66,7 +67,7 @@ class InvestmentEvent(Base):
     fx_rate_to_sar: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), nullable=False, default=Decimal("1.0")
     )
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON, nullable=True)
     status: Mapped[EventStatus] = mapped_column(
         Enum(EventStatus, name="event_status_enum"),
         nullable=False,

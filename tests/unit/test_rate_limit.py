@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from app.core.rate_limit import _key_func
+from app.core.rate_limit import _key_func, get_limiter
 from app.core.security import hash_api_key
 
 
@@ -47,3 +47,15 @@ class TestKeyFunc:
         request_2.headers = {"X-API-Key": "my-key"}
 
         assert _key_func(request_1) == _key_func(request_2)
+
+
+class TestLimiterConfig:
+    def test_uses_redis_storage(self):
+        """Limiter must be configured with Redis as shared storage backend."""
+        limiter = get_limiter()
+        assert "redis" in limiter._storage_uri
+
+    def test_in_memory_fallback_enabled(self):
+        """Limiter must gracefully degrade to in-memory if Redis is unavailable."""
+        limiter = get_limiter()
+        assert limiter._in_memory_fallback_enabled is True
