@@ -85,6 +85,19 @@ class TestGetPortfolioExposure:
         result = await get_portfolio_exposure(db_session, portfolio_id)
         assert result.total_aum_sar == Decimal("3750")
 
+    async def test_redemption_subtracts_from_aum(self, db_session):
+        portfolio_id = uuid.uuid4()
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.PRIVATE_EQUITY, 500000, EventType.ALLOCATION
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.PRIVATE_EQUITY, 100000, EventType.REDEMPTION
+        )
+
+        result = await get_portfolio_exposure(db_session, portfolio_id)
+        # 500K alloc - 100K redemption = 400K
+        assert result.total_aum_sar == Decimal("400000")
+
     async def test_isolation_between_portfolios(self, db_session):
         p1 = uuid.uuid4()
         p2 = uuid.uuid4()
@@ -121,6 +134,8 @@ class TestGetPortfolioSummary:
         assert result.allocations == 2
         assert result.redemptions == 1
         assert result.transfers == 0
+        # AUM: 100K + 200K alloc - 50K redemption = 250K
+        assert result.total_aum_sar == Decimal("250000")
 
 
 class TestListEvents:
@@ -175,3 +190,15 @@ class TestGlobalAggregate:
         assert result.total_aum_sar == Decimal("1000000")
         assert result.total_portfolios == 2
         assert result.total_events == 2
+
+    async def test_global_aggregate_with_redemptions(self, db_session):
+        p1, p2 = uuid.uuid4(), uuid.uuid4()
+        await _persist_event(db_session, p1, AssetClass.EQUITY, 500000, EventType.ALLOCATION)
+        await _persist_event(db_session, p1, AssetClass.EQUITY, 100000, EventType.REDEMPTION)
+        await _persist_event(db_session, p2, AssetClass.REAL_ESTATE, 300000, EventType.ALLOCATION)
+
+        result = await get_global_aggregate(db_session)
+        # 500K - 100K + 300K = 700K
+        assert result.total_aum_sar == Decimal("700000")
+        assert result.total_portfolios == 2
+        assert result.total_events == 3

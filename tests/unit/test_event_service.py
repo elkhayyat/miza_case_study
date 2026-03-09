@@ -56,7 +56,7 @@ class TestIngestEvent:
 
     async def test_cache_invalidated_on_new_event(self, db_session):
         with patch(
-            "app.services.event_service.cache_delete_pattern", new_callable=AsyncMock
+            "app.services.event_service.cache_delete_many", new_callable=AsyncMock
         ) as mock_del:
             data = _make_event_create()
             await ingest_event(db_session, data)
@@ -123,3 +123,20 @@ class TestComputeAmountSar:
         )
         result = compute_amount_sar(event)
         assert result == Decimal("3750.00")
+
+    def test_redemption_returns_negative(self):
+        event = InvestmentEvent(
+            event_id=uuid.uuid4(),
+            event_type=EventType.REDEMPTION,
+            portfolio_id=uuid.uuid4(),
+            asset_id=uuid.uuid4(),
+            asset_class=AssetClass.EQUITY,
+            amount=Decimal("50000"),
+            currency="SAR",
+            fx_rate_to_sar=Decimal("1.0"),
+            status=EventStatus.PROCESSED,
+            created_at=datetime.now(UTC),
+            ingested_at=datetime.now(UTC),
+        )
+        result = compute_amount_sar(event)
+        assert result == Decimal("-50000.0")
