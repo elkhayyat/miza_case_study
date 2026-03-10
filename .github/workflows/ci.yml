@@ -32,16 +32,10 @@ jobs:
         run: uv sync --group dev
 
       - name: Run ruff (lint)
-        run: |
-          TARGETS="app/"
-          [ -d tests ] && TARGETS="$TARGETS tests/"
-          uv run ruff check $TARGETS
+        run: uv run ruff check app/ tests/
 
       - name: Run ruff (format check)
-        run: |
-          TARGETS="app/"
-          [ -d tests ] && TARGETS="$TARGETS tests/"
-          uv run ruff format --check $TARGETS
+        run: uv run ruff format --check app/ tests/
 
   # ──────────────────────────────────────────────────────────────────────────────
   # Job 2: Test
@@ -65,7 +59,6 @@ jobs:
         run: uv sync --group dev
 
       - name: Run tests with coverage
-        if: hashFiles('tests/**') != ''
         run: |
           uv run pytest tests/ \
             --cov=app \
@@ -76,7 +69,7 @@ jobs:
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
-        if: always() && hashFiles('coverage.xml') != ''
+        if: always()
         with:
           name: coverage-report
           path: coverage.xml
