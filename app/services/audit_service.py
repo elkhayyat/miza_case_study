@@ -3,10 +3,12 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
+from app.core.metrics import audit_write_failures
 from app.models.audit_log import AuditLog
 
 logger = get_logger(__name__)
@@ -14,7 +16,7 @@ logger = get_logger(__name__)
 MAX_AUDIT_RETRIES = 3
 
 
-def compute_payload_hash(payload: dict | None) -> str | None:
+def compute_payload_hash(payload: dict[str, Any] | None) -> str | None:
     if payload is None:
         return None
     serialized = json.dumps(payload, sort_keys=True, default=str)
@@ -30,7 +32,7 @@ async def write_audit_log(
     entity_id: str | None,
     api_key_id: str,
     ip_address: str,
-    payload: dict | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> AuditLog:
     """Append an immutable audit record. Never updates or deletes."""
     log = AuditLog(
@@ -58,7 +60,7 @@ async def write_audit_log_background(
     entity_id: str | None,
     api_key_id: str,
     ip_address: str,
-    payload: dict | None = None,
+    payload: dict[str, Any] | None = None,
 ) -> None:
     """Write audit log in a background task with retry logic."""
     payload_hash = compute_payload_hash(payload)
@@ -87,6 +89,7 @@ async def write_audit_log_background(
                     MAX_AUDIT_RETRIES,
                     request_id,
                 )
+                audit_write_failures.inc()
             else:
                 delay = 0.1 * (2 ** (attempt - 1))
                 logger.warning(

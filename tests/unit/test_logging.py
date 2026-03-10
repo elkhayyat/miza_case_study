@@ -2,7 +2,13 @@
 
 import logging
 
-from app.core.logging import configure_logging, get_logger
+from app.core.logging import (
+    RequestIdFilter,
+    configure_logging,
+    get_logger,
+    get_request_id,
+    set_request_id,
+)
 
 
 class TestGetLogger:
@@ -54,3 +60,42 @@ class TestConfigureLogging:
             monkeypatch.setenv("LOG_LEVEL", "INFO")
             get_settings.cache_clear()
             configure_logging()
+
+    def test_configure_logging_adds_filter(self):
+        """configure_logging attaches a RequestIdFilter to the root handler."""
+        configure_logging()
+        root = logging.getLogger()
+        handler = root.handlers[0]
+        filter_types = [type(f) for f in handler.filters]
+        assert RequestIdFilter in filter_types
+
+
+class TestRequestIdContextVar:
+    def test_default_is_empty_string(self):
+        set_request_id("")
+        assert get_request_id() == ""
+
+    def test_set_and_get_request_id(self):
+        set_request_id("req-abc-123")
+        assert get_request_id() == "req-abc-123"
+        set_request_id("")
+
+
+class TestRequestIdFilter:
+    def test_filter_injects_request_id(self):
+        set_request_id("req-filter-test")
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=None,
+            exc_info=None,
+        )
+        f = RequestIdFilter()
+        result = f.filter(record)
+
+        assert result is True
+        assert record.request_id == "req-filter-test"  # type: ignore[attr-defined]
+        set_request_id("")

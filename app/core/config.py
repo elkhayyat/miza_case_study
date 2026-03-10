@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Batch processing
     max_batch_size: int = 100
 
+    # OpenTelemetry
+    otel_enabled: bool = False
+    otel_service_name: str = "miza-analytics"
+    otel_exporter_endpoint: str = ""
+    otel_exporter_insecure: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

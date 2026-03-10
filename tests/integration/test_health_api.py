@@ -73,3 +73,14 @@ class TestReadiness:
         assert data["status"] == "degraded"
         assert data["database"] == "error"
         assert data["cache"] == "ok"
+
+
+class TestMetricsEndpoint:
+    async def test_metrics_returns_prometheus_format(self, async_client):
+        """The /metrics endpoint must return Prometheus text exposition format."""
+        response = await async_client.get("/metrics")
+        assert response.status_code == 200
+        body = response.text
+        # Prometheus format includes these standard metric families
+        assert "http_request_duration" in body or "http_requests" in body
+        assert "# HELP" in body or "# TYPE" in body

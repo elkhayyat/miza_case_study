@@ -1,18 +1,20 @@
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
 from app.core.config import get_settings
+from app.core.tracing import setup_sqlalchemy_tracing
 
 _engine = None
 _session_factory = None
 
 
-def get_engine():
+def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         settings = get_settings()
@@ -24,6 +26,7 @@ def get_engine():
             pool_pre_ping=True,
             echo=settings.debug,
         )
+        setup_sqlalchemy_tracing(_engine)
     return _engine
 
 
