@@ -107,11 +107,11 @@ async def ingest_batch(
     client_ip = request.client.host if request.client else "unknown"
 
     events, duplicates, failed = await event_service.ingest_batch(db, data.events)
-    event_ingestion.labels(status="accepted").inc(len(events) - duplicates - failed)
+    accepted = len(events) - duplicates - failed
+    event_ingestion.labels(status="accepted").inc(accepted)
     event_ingestion.labels(status="duplicate").inc(duplicates)
     event_ingestion.labels(status="failed").inc(failed)
 
-    accepted = len(events) - duplicates - failed
     await audit_service.write_audit_log(
         db,
         request_id=request_id,
@@ -129,7 +129,7 @@ async def ingest_batch(
     )
 
     return BatchEventResponse(
-        accepted=len(events) - duplicates - failed,
+        accepted=accepted,
         duplicates=duplicates,
         failed=failed,
         events=[_event_to_response(e) for e in events],

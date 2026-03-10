@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Annotated
 
@@ -31,6 +32,44 @@ limiter = get_limiter()
 logger = get_logger(__name__)
 
 
+async def _cached_analytics[
+    CacheableT: (PortfolioExposureResponse, PortfolioSummaryResponse, GlobalAggregateResponse)
+](
+    cache_key: str,
+    response_type: type[CacheableT],
+    compute: Callable[[], Awaitable[CacheableT]],
+    background_tasks: BackgroundTasks,
+    request: Request,
+    api_key: APIKeyInfo,
+    entity_type: str,
+    entity_id: str | None,
+) -> CacheableT:
+    """Cache-aside helper shared by cached analytics endpoints."""
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        try:
+            result = response_type.model_validate(cached)
+            result.cache_hit = True
+            return result
+        except ValidationError:
+            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
+
+    result = await compute()
+    await cache_set(cache_key, result.model_dump(mode="json"))
+
+    background_tasks.add_task(
+        audit_service.write_audit_log_background,
+        session_factory=get_session_factory(),
+        request_id=request.state.request_id,
+        action="QUERY_ANALYTICS",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        api_key_id=api_key.client_id,
+        ip_address=request.client.host if request.client else "unknown",
+    )
+    return result
+
+
 @router.get(
     "/analytics/portfolio/{portfolio_id}/exposure",
     response_model=PortfolioExposureResponse,
@@ -45,30 +84,16 @@ async def get_portfolio_exposure(
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> PortfolioExposureResponse:
-    cache_key = portfolio_exposure_key(str(portfolio_id))
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        try:
-            result = PortfolioExposureResponse.model_validate(cached)
-            result.cache_hit = True
-            return result
-        except ValidationError:
-            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
-
-    result = await analytics_service.get_portfolio_exposure(db, portfolio_id)
-    await cache_set(cache_key, result.model_dump(mode="json"))
-
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
-        request_id=request.state.request_id,
-        action="QUERY_ANALYTICS",
+    return await _cached_analytics(
+        cache_key=portfolio_exposure_key(str(portfolio_id)),
+        response_type=PortfolioExposureResponse,
+        compute=lambda: analytics_service.get_portfolio_exposure(db, portfolio_id),
+        background_tasks=background_tasks,
+        request=request,
+        api_key=api_key,
         entity_type="Portfolio",
         entity_id=str(portfolio_id),
-        api_key_id=api_key.client_id,
-        ip_address=request.client.host if request.client else "unknown",
     )
-    return result
 
 
 @router.get(
@@ -85,30 +110,16 @@ async def get_portfolio_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> PortfolioSummaryResponse:
-    cache_key = portfolio_summary_key(str(portfolio_id))
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        try:
-            result = PortfolioSummaryResponse.model_validate(cached)
-            result.cache_hit = True
-            return result
-        except ValidationError:
-            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
-
-    result = await analytics_service.get_portfolio_summary(db, portfolio_id)
-    await cache_set(cache_key, result.model_dump(mode="json"))
-
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
-        request_id=request.state.request_id,
-        action="QUERY_ANALYTICS",
+    return await _cached_analytics(
+        cache_key=portfolio_summary_key(str(portfolio_id)),
+        response_type=PortfolioSummaryResponse,
+        compute=lambda: analytics_service.get_portfolio_summary(db, portfolio_id),
+        background_tasks=background_tasks,
+        request=request,
+        api_key=api_key,
         entity_type="Portfolio",
         entity_id=str(portfolio_id),
-        api_key_id=api_key.client_id,
-        ip_address=request.client.host if request.client else "unknown",
     )
-    return result
 
 
 @router.get(
@@ -155,27 +166,13 @@ async def get_global_aggregate(
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> GlobalAggregateResponse:
-    cache_key = GLOBAL_AGGREGATE_KEY
-    cached = await cache_get(cache_key)
-    if cached is not None:
-        try:
-            result = GlobalAggregateResponse.model_validate(cached)
-            result.cache_hit = True
-            return result
-        except ValidationError:
-            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
-
-    result = await analytics_service.get_global_aggregate(db)
-    await cache_set(cache_key, result.model_dump(mode="json"))
-
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
-        request_id=request.state.request_id,
-        action="QUERY_ANALYTICS",
+    return await _cached_analytics(
+        cache_key=GLOBAL_AGGREGATE_KEY,
+        response_type=GlobalAggregateResponse,
+        compute=lambda: analytics_service.get_global_aggregate(db),
+        background_tasks=background_tasks,
+        request=request,
+        api_key=api_key,
         entity_type="GlobalAggregate",
         entity_id=None,
-        api_key_id=api_key.client_id,
-        ip_address=request.client.host if request.client else "unknown",
     )
-    return result
