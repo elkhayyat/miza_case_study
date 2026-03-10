@@ -113,6 +113,45 @@ class TestIngestBatch:
         assert processed == []
         assert dups == 0
 
+    async def test_concurrent_duplicate_counted_as_duplicate(self, db_session, mock_redis):
+        """IntegrityError from concurrent insert should count as duplicate, not failed."""
+        from app.services import event_service
+
+        data = _make_event_create()
+        await ingest_event(db_session, data)
+        await db_session.commit()
+
+        # Dedup check misses the event (simulates concurrent insert race)
+        with patch.object(event_service, "_get_existing_event_ids", return_value={}):
+            processed, dups, failed = await ingest_batch(db_session, [data])
+
+        assert dups == 1
+        assert failed == 0
+        assert len(processed) == 1
+        assert processed[0].event_id == data.event_id
+
+    async def test_batch_continues_after_integrity_error(self, db_session, mock_redis):
+        """Session remains usable for subsequent events after savepoint rollback."""
+        from app.services import event_service
+
+        existing = _make_event_create()
+        await ingest_event(db_session, existing)
+        await db_session.commit()
+
+        new_event = _make_event_create()
+        batch = [existing, new_event]
+
+        with patch.object(event_service, "_get_existing_event_ids", return_value={}):
+            processed, dups, failed = await ingest_batch(db_session, batch)
+
+        assert dups == 1
+        assert failed == 0
+        assert len(processed) == 2
+        # Second event was inserted successfully after the first hit IntegrityError
+        event_ids = {e.event_id for e in processed}
+        assert existing.event_id in event_ids
+        assert new_event.event_id in event_ids
+
 
 class TestComputeAmountSar:
     def test_sar_currency_no_conversion(self):
