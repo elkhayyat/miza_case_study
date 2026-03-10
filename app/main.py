@@ -23,7 +23,6 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    configure_logging()
     settings = get_settings()
     logger.info(
         "Starting %s v%s [%s]",
@@ -62,6 +61,8 @@ def _rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONRespon
 def create_app() -> FastAPI:
     settings = get_settings()
 
+    is_production = settings.environment == "production"
+
     app = FastAPI(
         title="Miza Investment Analytics API",
         description=(
@@ -70,9 +71,9 @@ def create_app() -> FastAPI:
             "and CMA-compliant audit logging."
         ),
         version=settings.app_version,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
         lifespan=lifespan,
     )
 
@@ -85,10 +86,31 @@ def create_app() -> FastAPI:
     )
 
     @app.middleware("http")
+    async def security_headers_middleware(
+        request: Request, call_next: Callable[..., Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        return response
+
+    @app.middleware("http")
     async def request_id_middleware(
         request: Request, call_next: Callable[..., Awaitable[Response]]
     ) -> Response:
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        raw_request_id = request.headers.get("X-Request-ID")
+        if raw_request_id is not None:
+            try:
+                uuid.UUID(raw_request_id)
+                request_id = raw_request_id
+            except ValueError:
+                request_id = str(uuid.uuid4())
+        else:
+            request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         set_request_id(request_id)
 
@@ -124,7 +146,7 @@ def create_app() -> FastAPI:
     # Prometheus instrumentation — auto-tracks HTTP request duration/count/active
     Instrumentator(
         excluded_handlers=["/health", "/health/ready", "/metrics"],
-    ).instrument(app).expose(app, endpoint="/metrics")
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
     return app
 

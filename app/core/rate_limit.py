@@ -25,5 +25,9 @@ def get_limiter() -> Limiter:
         default_limits=[default_limit],
         storage_uri=settings.redis_url,
         in_memory_fallback_enabled=True,
+        # swallow_errors: when Redis is unavailable, rate limiting falls back to
+        # in-memory counters per worker process. In multi-worker deployments the
+        # effective limit becomes N x configured_limit. This favors availability
+        # over strict enforcement. Monitor the rate_limit_hits Prometheus counter.
         swallow_errors=True,
     )

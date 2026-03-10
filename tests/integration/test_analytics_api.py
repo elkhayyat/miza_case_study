@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -199,3 +200,82 @@ class TestGlobalAggregate:
         data = response.json()
         assert data["total_portfolios"] == 2
         assert float(data["total_aum_sar"]) == pytest.approx(1_000_000.0)
+
+
+class TestCacheHits:
+    """Verify the cache-hit path returns cached data with cache_hit=True."""
+
+    async def test_exposure_cache_hit(self, async_client, auth_headers):
+        pid = str(uuid.uuid4())
+        cached_data = {
+            "portfolio_id": pid,
+            "total_aum_sar": "999",
+            "currency": "SAR",
+            "exposures": [],
+            "as_of": datetime.now(UTC).isoformat(),
+            "cache_hit": False,
+        }
+        with patch(
+            "app.api.v1.endpoints.analytics.cache_get",
+            new_callable=AsyncMock,
+            return_value=cached_data,
+        ):
+            response = await async_client.get(
+                f"{BASE}/analytics/portfolio/{pid}/exposure",
+                headers=auth_headers,
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cache_hit"] is True
+        assert data["total_aum_sar"] == "999"
+
+    async def test_summary_cache_hit(self, async_client, auth_headers):
+        pid = str(uuid.uuid4())
+        cached_data = {
+            "portfolio_id": pid,
+            "total_aum_sar": "888",
+            "total_events": 5,
+            "allocations": 3,
+            "redemptions": 1,
+            "transfers": 1,
+            "valuation_updates": 0,
+            "last_event_at": datetime.now(UTC).isoformat(),
+            "as_of": datetime.now(UTC).isoformat(),
+            "cache_hit": False,
+        }
+        with patch(
+            "app.api.v1.endpoints.analytics.cache_get",
+            new_callable=AsyncMock,
+            return_value=cached_data,
+        ):
+            response = await async_client.get(
+                f"{BASE}/analytics/portfolio/{pid}/summary",
+                headers=auth_headers,
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cache_hit"] is True
+        assert data["total_aum_sar"] == "888"
+
+    async def test_aggregate_cache_hit(self, async_client, auth_headers):
+        cached_data = {
+            "total_aum_sar": "777",
+            "total_portfolios": 10,
+            "total_events": 42,
+            "exposures_by_asset_class": [],
+            "as_of": datetime.now(UTC).isoformat(),
+            "cache_hit": False,
+        }
+        with patch(
+            "app.api.v1.endpoints.analytics.cache_get",
+            new_callable=AsyncMock,
+            return_value=cached_data,
+        ):
+            response = await async_client.get(
+                f"{BASE}/analytics/aggregate",
+                headers=auth_headers,
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cache_hit"] is True
+        assert data["total_aum_sar"] == "777"

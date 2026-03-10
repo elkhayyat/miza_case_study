@@ -1,11 +1,16 @@
+import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.event import AssetClass, EventStatus, EventType
+
+_MAX_METADATA_BYTES = 4096
+_CREATED_AT_MAX_AGE = timedelta(days=30)
+_CREATED_AT_MAX_FUTURE = timedelta(minutes=5)
 
 
 class EventCreate(BaseModel):
@@ -26,7 +31,9 @@ class EventCreate(BaseModel):
         gt=0,
         description="FX rate to convert currency to SAR (1.0 for SAR)",
     )
-    created_at: datetime = Field(description="Event timestamp (client-side)")
+    created_at: AwareDatetime = Field(
+        description="Event timestamp (client-side, must include timezone)",
+    )
     metadata: dict[str, Any] | None = Field(default=None, description="Arbitrary JSON metadata")
     notes: str | None = Field(default=None, max_length=1000)
 
@@ -34,6 +41,27 @@ class EventCreate(BaseModel):
     @classmethod
     def currency_upper(cls, v: str) -> str:
         return v.upper()
+
+    @field_validator("created_at")
+    @classmethod
+    def created_at_within_bounds(cls, v: AwareDatetime) -> AwareDatetime:
+        now = datetime.now(UTC)
+        if v < now - _CREATED_AT_MAX_AGE:
+            msg = "created_at must not be more than 30 days in the past"
+            raise ValueError(msg)
+        if v > now + _CREATED_AT_MAX_FUTURE:
+            msg = "created_at must not be more than 5 minutes in the future"
+            raise ValueError(msg)
+        return v
+
+    @model_validator(mode="after")
+    def validate_metadata_size(self) -> "EventCreate":
+        if self.metadata is not None:
+            serialized = json.dumps(self.metadata, default=str)
+            if len(serialized.encode()) > _MAX_METADATA_BYTES:
+                msg = f"metadata must not exceed {_MAX_METADATA_BYTES} bytes when serialized"
+                raise ValueError(msg)
+        return self
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -56,7 +84,7 @@ class EventCreate(BaseModel):
 class EventBatchCreate(BaseModel):
     """Schema for batch event ingestion."""
 
-    events: list[EventCreate] = Field(min_length=1)
+    events: list[EventCreate] = Field(min_length=1, max_length=100)
 
 
 class EventBaseResponse(BaseModel):

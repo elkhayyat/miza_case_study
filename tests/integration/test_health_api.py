@@ -75,6 +75,15 @@ class TestReadiness:
         assert data["cache"] == "ok"
 
 
+class TestSecurityHeaders:
+    async def test_security_headers_present(self, async_client):
+        response = await async_client.get("/health")
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+        assert response.headers["X-Frame-Options"] == "DENY"
+        assert response.headers["Referrer-Policy"] == "no-referrer"
+        assert "Permissions-Policy" in response.headers
+
+
 class TestMetricsEndpoint:
     async def test_metrics_returns_prometheus_format(self, async_client):
         """The /metrics endpoint must return Prometheus text exposition format."""

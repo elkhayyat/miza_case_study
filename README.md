@@ -233,6 +233,8 @@ The builder stage installs dependencies; the runtime stage copies only the virtu
 3. **Simple API key auth**: No OAuth2, JWT, or MFA. Sufficient for B2B service auth but not end-user auth.
 4. **Audit log retention**: No archival or TTL policy on `audit_logs`. A production CMA-compliant system needs a defined retention period.
 5. **Single-region**: No active-active failover. RTO/RPO would need definition based on CMA requirements.
+6. **Offset-based pagination**: The `GET /analytics/events` endpoint uses offset pagination, which degrades on deep pages (>100K events). For large datasets, cursor-based pagination (keyset on `created_at` + `event_id`) would provide consistent O(1) page fetches.
+7. **Aggregation-based analytics**: Analytics are computed via SQL `GROUP BY` rather than event sourcing / CQRS. This is simpler to implement and sufficient for the case study scope. A production CMA-compliant system may benefit from event sourcing for full auditability and point-in-time portfolio reconstruction.
 
 ---
 
