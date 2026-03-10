@@ -15,7 +15,7 @@ async def _create_event(
     payload = {
         "event_type": event_type,
         "portfolio_id": str(portfolio_id),
-        "asset_id": str(uuid.uuid4()),
+        "asset_id": "AAPL",
         "asset_class": asset_class,
         "amount": str(amount),
         "currency": "SAR",

@@ -22,7 +22,9 @@ class EventCreate(BaseModel):
     )
     event_type: EventType
     portfolio_id: uuid.UUID
-    asset_id: uuid.UUID
+    asset_id: str = Field(
+        min_length=1, max_length=20, description="Asset identifier (e.g. ticker symbol, ISIN)"
+    )
     asset_class: AssetClass
     amount: Decimal = Field(gt=0, description="Transaction amount in the given currency")
     currency: str = Field(default="SAR", min_length=3, max_length=3)
@@ -32,7 +34,8 @@ class EventCreate(BaseModel):
         description="FX rate to convert currency to SAR (1.0 for SAR)",
     )
     created_at: AwareDatetime = Field(
-        description="Event timestamp (client-side, must include timezone)",
+        default_factory=lambda: datetime.now(UTC),
+        description="Event timestamp (client-side, must include timezone). Defaults to now.",
     )
     metadata: dict[str, Any] | None = Field(default=None, description="Arbitrary JSON metadata")
     notes: str | None = Field(default=None, max_length=1000)
@@ -69,7 +72,7 @@ class EventCreate(BaseModel):
                 "event_id": "550e8400-e29b-41d4-a716-446655440000",
                 "event_type": "ALLOCATION",
                 "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-                "asset_id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+                "asset_id": "AAPL",
                 "asset_class": "PRIVATE_EQUITY",
                 "amount": "500000.00",
                 "currency": "SAR",
@@ -103,7 +106,7 @@ class EventBaseResponse(BaseModel):
 class EventResponse(EventBaseResponse):
     """Full event detail response."""
 
-    asset_id: uuid.UUID
+    asset_id: str
     amount: Decimal
     fx_rate_to_sar: Decimal
     status: EventStatus

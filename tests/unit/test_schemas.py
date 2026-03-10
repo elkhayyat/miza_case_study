@@ -14,7 +14,7 @@ class TestEventCreate:
         data = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "PRIVATE_EQUITY",
             "amount": "100000.00",
             "currency": "sar",  # should be uppercased
@@ -100,6 +100,12 @@ class TestEventCreate:
         with pytest.raises(ValueError):
             EventCreate(**self._base_data(created_at="2026-03-09T10:00:00"))
 
+    def test_created_at_defaults_to_now(self):
+        data = self._base_data()
+        del data["created_at"]
+        event = EventCreate(**data)
+        assert event.created_at is not None
+
     def test_notes_exceeds_max_length_rejected(self):
         with pytest.raises(ValueError):
             EventCreate(**self._base_data(notes="x" * 1001))
@@ -110,7 +116,7 @@ class TestEventBatchCreate:
         return {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "PRIVATE_EQUITY",
             "amount": "50000",
             "currency": "SAR",

@@ -27,7 +27,7 @@ async def _persist_event(
         event_id=uuid.uuid4(),
         event_type=event_type,
         portfolio_id=portfolio_id,
-        asset_id=uuid.uuid4(),
+        asset_id="AAPL",
         asset_class=asset_class,
         amount=Decimal(str(amount)),
         currency="SAR",

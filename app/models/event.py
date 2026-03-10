@@ -56,9 +56,7 @@ class InvestmentEvent(Base):
     portfolio_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True, native_uuid=True), nullable=False
     )
-    asset_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True, native_uuid=True), nullable=False
-    )
+    asset_id: Mapped[str] = mapped_column(String(20), nullable=False)
     asset_class: Mapped[AssetClass] = mapped_column(
         Enum(AssetClass, name="asset_class_enum"), nullable=False
     )
