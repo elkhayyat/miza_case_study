@@ -28,6 +28,14 @@ services:
       timeout: 3s
       retries: 10
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
   migrate:
     image: miza-analytics:latest
     build:
@@ -54,11 +62,17 @@ services:
       API_KEYS: ${API_KEYS:?API_KEYS must be set}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OTEL_ENABLED: ${OTEL_ENABLED:-true}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-miza-analytics}
+      OTEL_EXPORTER_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_INSECURE: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      jaeger:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
     healthcheck:

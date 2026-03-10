@@ -6,15 +6,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import event_ingestion
 from app.core.security import APIKeyInfo, require_api_key
 from app.db.session import get_db, get_session_factory
+from app.models.event import InvestmentEvent
 from app.schemas.event import BatchEventResponse, EventBatchCreate, EventCreate, EventResponse
 from app.services import audit_service, event_service
 
 router = APIRouter()
 
 
-def _event_to_response(event) -> EventResponse:
+def _event_to_response(event: InvestmentEvent) -> EventResponse:
     return EventResponse(
         event_id=event.event_id,
         event_type=event.event_type,
@@ -47,11 +49,12 @@ async def ingest_event(
     background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
-) -> EventResponse:
+) -> EventResponse | JSONResponse:
     request_id = request.state.request_id
     client_ip = request.client.host if request.client else "unknown"
 
     event, is_duplicate = await event_service.ingest_event(db, data)
+    event_ingestion.labels(status="duplicate" if is_duplicate else "accepted").inc()
 
     background_tasks.add_task(
         audit_service.write_audit_log_background,
@@ -93,6 +96,9 @@ async def ingest_batch(
     client_ip = request.client.host if request.client else "unknown"
 
     events, duplicates, failed = await event_service.ingest_batch(db, data.events)
+    event_ingestion.labels(status="accepted").inc(len(events) - duplicates - failed)
+    event_ingestion.labels(status="duplicate").inc(duplicates)
+    event_ingestion.labels(status="failed").inc(failed)
 
     background_tasks.add_task(
         audit_service.write_audit_log_background,

@@ -26,7 +26,7 @@ async def liveness() -> HealthResponse:
 
 
 @router.get("/health/ready", response_model=ReadinessResponse, tags=["System"])
-async def readiness():
+async def readiness() -> ReadinessResponse | JSONResponse:
     """Readiness probe — checks DB and Redis connectivity."""
     db_status = "ok"
     cache_status = "ok"

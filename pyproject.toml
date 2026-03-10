@@ -19,6 +19,13 @@ dependencies = [
     "python-json-logger>=3.2.0",
     "httpx>=0.28.0",
     "slowapi>=0.1.9",
+    "prometheus-fastapi-instrumentator>=7.0.0",
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-instrumentation-fastapi>=0.46b0",
+    "opentelemetry-exporter-otlp>=1.25.0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.46b0",
+    "opentelemetry-instrumentation-redis>=0.46b0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -41,6 +48,9 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=app --cov-report=term-missing --cov-report=xml"
+markers = [
+    "postgres: tests requiring a real PostgreSQL instance",
+]
 
 [tool.coverage.run]
 omit = ["tests/*", "alembic/*"]
