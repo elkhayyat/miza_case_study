@@ -72,95 +72,302 @@ uv run pytest tests/
 
 ## API Reference
 
-All endpoints require the `X-API-Key` header.
+Interactive OpenAPI docs are available at `http://localhost:8000/docs` when the server is running.
 
 ### Authentication
 
-Generate an API key hash:
+All `/api/v1/*` endpoints require the `X-API-Key` header. Health checks are unauthenticated.
+
+```
+X-API-Key: your-raw-key
+```
+
+Generate an API key hash and add it to `.env`:
+
 ```bash
 python3 -c "import hashlib; print(hashlib.sha256(b'your-raw-key').hexdigest())"
 ```
 
-Add to `.env`:
 ```
 API_KEYS=client_name:sha256hash_here
 ```
 
+Multiple keys are comma-separated: `client_a:hash_a,client_b:hash_b`.
+
+Unauthorized requests return `401`:
+```json
+{ "detail": "Invalid or missing API key" }
+```
+
+### Rate Limits
+
+| Endpoint group | Limit |
+|---|---|
+| Event ingestion (single) | 100 req/min |
+| Event ingestion (batch) | 20 req/min |
+| Event retrieval & analytics | 200 req/min |
+
+---
+
 ### Event Ingestion
 
-#### `POST /api/v1/events`
-Ingest a single investment event. Idempotent via `event_id`.
+#### `POST /api/v1/events` — Ingest single event
 
+Idempotent via `event_id`. Returns `201 Created` for new events, `200 OK` for duplicates.
+
+**Request body:**
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `event_id` | `uuid` | No | auto-generated | Idempotency key — reuse to deduplicate retries |
+| `event_type` | `string` | Yes | — | One of: `ALLOCATION`, `REDEMPTION`, `TRANSFER`, `VALUATION_UPDATE` |
+| `portfolio_id` | `uuid` | Yes | — | Portfolio identifier |
+| `asset_id` | `string` | Yes | — | Asset identifier (1–20 chars, uppercase alphanumeric, e.g. `AAPL`, `SA1234`) |
+| `asset_class` | `string` | Yes | — | One of: `PRIVATE_EQUITY`, `REAL_ESTATE`, `HEDGE_FUND`, `FIXED_INCOME`, `EQUITY` |
+| `amount` | `decimal` | Yes | — | Transaction amount (must be > 0) |
+| `currency` | `string` | No | `"SAR"` | ISO 4217 currency code (3 chars) |
+| `fx_rate_to_sar` | `decimal` | No | `1.0` | FX conversion rate to SAR (must be > 0) |
+| `created_at` | `datetime` | No | now | ISO 8601 with timezone. Must be within 30 days past to 5 minutes future |
+| `metadata` | `object` | No | `null` | Arbitrary JSON (max 4096 bytes serialized) |
+| `notes` | `string` | No | `null` | Free-text notes (max 1000 chars) |
+
+**Example request:**
+```bash
+curl -X POST http://localhost:8000/api/v1/events \
+  -H "X-API-Key: your-raw-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_id": "550e8400-e29b-41d4-a716-446655440000",
+    "event_type": "ALLOCATION",
+    "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "asset_id": "AAPL",
+    "asset_class": "PRIVATE_EQUITY",
+    "amount": "500000.00",
+    "currency": "SAR",
+    "fx_rate_to_sar": "1.0",
+    "created_at": "2026-03-04T10:00:00Z",
+    "metadata": { "deal_name": "STC Ventures Series B" }
+  }'
+```
+
+**Response (201 Created):**
 ```json
 {
   "event_id": "550e8400-e29b-41d4-a716-446655440000",
   "event_type": "ALLOCATION",
   "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-  "asset_id": "6ba7b811-9dad-11d1-80b4-00c04fd430c8",
+  "asset_id": "AAPL",
   "asset_class": "PRIVATE_EQUITY",
   "amount": "500000.00",
   "currency": "SAR",
   "fx_rate_to_sar": "1.0",
+  "amount_sar": "500000.00",
+  "status": "PROCESSED",
   "created_at": "2026-03-04T10:00:00Z",
-  "metadata": { "deal_name": "STC Ventures Series B" }
+  "ingested_at": "2026-03-04T10:00:01Z",
+  "processed_at": null,
+  "metadata": { "deal_name": "STC Ventures Series B" },
+  "notes": null
 }
 ```
 
-Returns `201` for new events, `200` for duplicates.
+---
 
-#### `POST /api/v1/events/batch`
-Ingest up to 100 events in a single request. Returns `207 Multi-Status`.
+#### `POST /api/v1/events/batch` — Ingest batch of events
 
+Accepts up to 100 events in a single request. Returns `207 Multi-Status`.
+
+**Request body:**
 ```json
-{ "events": [ ...up to 100 event objects... ] }
+{
+  "events": [ ...up to 100 EventCreate objects... ]
+}
 ```
 
-#### `GET /api/v1/events/{event_id}`
-Retrieve a single event by ID. Returns `404` if not found.
+**Response (207 Multi-Status):**
+```json
+{
+  "accepted": 8,
+  "duplicates": 1,
+  "failed": 1,
+  "events": [ ...EventResponse objects... ]
+}
+```
+
+---
+
+#### `GET /api/v1/events/{event_id}` — Retrieve single event
+
+Returns `200 OK` with the event, or `404 Not Found`.
+
+**Example:**
+```bash
+curl http://localhost:8000/api/v1/events/550e8400-e29b-41d4-a716-446655440000 \
+  -H "X-API-Key: your-raw-key"
+```
+
+---
 
 ### Analytics
 
+All analytics responses include `cache_hit: bool` indicating whether the result was served from Redis.
+
 #### `GET /api/v1/analytics/portfolio/{portfolio_id}/exposure`
+
 AUM breakdown by asset class with allocation percentages.
 
+**Response (200 OK):**
 ```json
 {
-  "portfolio_id": "...",
+  "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
   "total_aum_sar": "1000000.00",
   "currency": "SAR",
   "exposures": [
-    { "asset_class": "PRIVATE_EQUITY", "amount_sar": "600000", "allocation_pct": 60.0, "event_count": 3 },
-    { "asset_class": "REAL_ESTATE", "amount_sar": "400000", "allocation_pct": 40.0, "event_count": 2 }
+    { "asset_class": "PRIVATE_EQUITY", "amount_sar": "600000.00", "allocation_pct": 60.0, "event_count": 3 },
+    { "asset_class": "REAL_ESTATE", "amount_sar": "400000.00", "allocation_pct": 40.0, "event_count": 2 }
   ],
   "as_of": "2026-03-04T10:00:00Z",
   "cache_hit": false
 }
 ```
 
+---
+
 #### `GET /api/v1/analytics/portfolio/{portfolio_id}/summary`
-Total AUM and event type counts for a portfolio.
 
-#### `GET /api/v1/analytics/events`
-Paginated event stream with filters:
-- `portfolio_id`, `event_type`, `asset_class`
-- `from_date`, `to_date` (ISO 8601)
-- `page`, `page_size` (max 200)
+Total AUM with event type breakdown for a portfolio.
 
-#### `GET /api/v1/analytics/aggregate`
-Global AUM and exposure across all portfolios.
+**Response (200 OK):**
+```json
+{
+  "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+  "total_aum_sar": "1000000.00",
+  "total_events": 12,
+  "allocations": 5,
+  "redemptions": 2,
+  "transfers": 3,
+  "valuation_updates": 2,
+  "last_event_at": "2026-03-04T10:00:00Z",
+  "as_of": "2026-03-04T10:00:01Z",
+  "cache_hit": false
+}
+```
+
+---
+
+#### `GET /api/v1/analytics/events` — Paginated event stream
+
+Filterable, paginated list of events (not cached).
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `portfolio_id` | `uuid` | — | Filter by portfolio |
+| `event_type` | `string` | — | Filter by event type |
+| `asset_class` | `string` | — | Filter by asset class |
+| `from_date` | `datetime` | — | Events after this date (ISO 8601) |
+| `to_date` | `datetime` | — | Events before this date (ISO 8601) |
+| `page` | `int` | `1` | Page number (≥ 1) |
+| `page_size` | `int` | `50` | Results per page (1–200) |
+
+**Example:**
+```bash
+curl "http://localhost:8000/api/v1/analytics/events?portfolio_id=6ba7b810-9dad-11d1-80b4-00c04fd430c8&event_type=ALLOCATION&page=1&page_size=20" \
+  -H "X-API-Key: your-raw-key"
+```
+
+**Response (200 OK):**
+```json
+{
+  "total": 45,
+  "page": 1,
+  "page_size": 20,
+  "events": [
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "ALLOCATION",
+      "portfolio_id": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      "asset_class": "PRIVATE_EQUITY",
+      "amount_sar": "500000.00",
+      "currency": "SAR",
+      "created_at": "2026-03-04T10:00:00Z",
+      "ingested_at": "2026-03-04T10:00:01Z"
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/v1/analytics/aggregate` — Global aggregate
+
+Global AUM and asset class breakdown across all portfolios.
+
+**Response (200 OK):**
+```json
+{
+  "total_aum_sar": "15000000.00",
+  "total_portfolios": 12,
+  "total_events": 340,
+  "exposures_by_asset_class": [
+    { "asset_class": "PRIVATE_EQUITY", "amount_sar": "6000000.00", "allocation_pct": 40.0, "event_count": 120 },
+    { "asset_class": "REAL_ESTATE", "amount_sar": "4500000.00", "allocation_pct": 30.0, "event_count": 80 }
+  ],
+  "as_of": "2026-03-04T10:00:01Z",
+  "cache_hit": true
+}
+```
+
+---
 
 ### System
 
-| Endpoint | Description |
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/health` | `GET` | No | Liveness probe — always returns `200` |
+| `/health/ready` | `GET` | No | Readiness probe — returns `200` if DB + Redis are healthy, `503` if degraded |
+
+**Readiness response:**
+```json
+{ "status": "ready", "database": "ok", "cache": "ok" }
+```
+
+---
+
+### Enums
+
+**Event Types:** `ALLOCATION` · `REDEMPTION` · `TRANSFER` · `VALUATION_UPDATE`
+
+**Asset Classes:** `PRIVATE_EQUITY` · `REAL_ESTATE` · `HEDGE_FUND` · `FIXED_INCOME` · `EQUITY`
+
+**Event Statuses:** `PENDING` · `PROCESSED` · `FAILED`
+
+---
+
+### Error Responses
+
+All errors follow a consistent format:
+
+| Status | Condition |
 |---|---|
-| `GET /health` | Liveness probe — always `200` |
-| `GET /health/ready` | Readiness probe — checks DB + Redis |
+| `401 Unauthorized` | Missing or invalid `X-API-Key` |
+| `404 Not Found` | Event ID does not exist |
+| `422 Unprocessable Entity` | Validation error (invalid fields, batch exceeds 100) |
+| `429 Too Many Requests` | Rate limit exceeded |
 
-### Event Types
-`ALLOCATION` · `REDEMPTION` · `TRANSFER` · `VALUATION_UPDATE`
-
-### Asset Classes
-`PRIVATE_EQUITY` · `REAL_ESTATE` · `HEDGE_FUND` · `FIXED_INCOME` · `EQUITY`
+**Validation error example:**
+```json
+{
+  "detail": [
+    {
+      "loc": ["body", "amount"],
+      "msg": "Input should be greater than 0",
+      "type": "greater_than"
+    }
+  ]
+}
+```
 
 ---
 
