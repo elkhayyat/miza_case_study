@@ -13,7 +13,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "PRIVATE_EQUITY",
             "amount": "500000.00",
             "currency": "SAR",
@@ -33,7 +33,7 @@ class TestIngestEvent:
             "event_id": event_id,
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "100000",
             "currency": "SAR",
@@ -51,7 +51,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "1000",
             "currency": "SAR",
@@ -65,7 +65,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "1000",
             "currency": "SAR",
@@ -81,7 +81,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "BUY",  # invalid
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "1000",
             "currency": "SAR",
@@ -95,7 +95,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "-1000",
             "currency": "SAR",
@@ -109,7 +109,7 @@ class TestIngestEvent:
         payload = {
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "1000.00",
             "currency": "USD",
@@ -127,7 +127,7 @@ class TestBatchIngest:
             {
                 "event_type": "ALLOCATION",
                 "portfolio_id": str(uuid.uuid4()),
-                "asset_id": str(uuid.uuid4()),
+                "asset_id": "AAPL",
                 "asset_class": "PRIVATE_EQUITY",
                 "amount": str(i * 10000),
                 "currency": "SAR",
@@ -151,7 +151,7 @@ class TestBatchIngest:
             "event_id": event_id,
             "event_type": "ALLOCATION",
             "portfolio_id": str(uuid.uuid4()),
-            "asset_id": str(uuid.uuid4()),
+            "asset_id": "AAPL",
             "asset_class": "EQUITY",
             "amount": "50000",
             "currency": "SAR",
@@ -175,7 +175,7 @@ class TestBatchIngest:
             {
                 "event_type": "ALLOCATION",
                 "portfolio_id": str(uuid.uuid4()),
-                "asset_id": str(uuid.uuid4()),
+                "asset_id": "AAPL",
                 "asset_class": "EQUITY",
                 "amount": "1000",
                 "currency": "SAR",

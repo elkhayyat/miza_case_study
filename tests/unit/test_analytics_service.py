@@ -21,13 +21,14 @@ async def _persist_event(
     event_type: EventType = EventType.ALLOCATION,
     fx_rate: Decimal | float = Decimal("1.0"),
     created_at: datetime | None = None,
+    asset_id: str = "AAPL",
 ) -> InvestmentEvent:
     now = datetime.now(UTC)
     event = InvestmentEvent(
         event_id=uuid.uuid4(),
         event_type=event_type,
         portfolio_id=portfolio_id,
-        asset_id=uuid.uuid4(),
+        asset_id=asset_id,
         asset_class=asset_class,
         amount=Decimal(str(amount)),
         currency="SAR",
