@@ -1,7 +1,7 @@
 """Unit tests for the analytics computation service."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.models.event import AssetClass, EventStatus, EventType, InvestmentEvent
@@ -20,6 +20,7 @@ async def _persist_event(
     amount: Decimal | int | float,
     event_type: EventType = EventType.ALLOCATION,
     fx_rate: Decimal | float = Decimal("1.0"),
+    created_at: datetime | None = None,
 ) -> InvestmentEvent:
     now = datetime.now(UTC)
     event = InvestmentEvent(
@@ -32,7 +33,7 @@ async def _persist_event(
         currency="SAR",
         fx_rate_to_sar=Decimal(str(fx_rate)),
         status=EventStatus.PROCESSED,
-        created_at=now,
+        created_at=created_at or now,
         ingested_at=now,
         processed_at=now,
     )
@@ -187,6 +188,72 @@ class TestListEvents:
         assert page1.total == 10
         assert len(page1.events) == 6
         assert len(page2.events) == 4
+
+    async def test_filter_by_from_date(self, db_session):
+        portfolio_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 10000, created_at=now - timedelta(days=5)
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 20000, created_at=now - timedelta(days=1)
+        )
+
+        result = await list_events(
+            db_session, portfolio_id=portfolio_id, from_date=now - timedelta(days=3)
+        )
+        assert result.total == 1
+
+    async def test_filter_by_to_date(self, db_session):
+        portfolio_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 10000, created_at=now - timedelta(days=5)
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 20000, created_at=now - timedelta(days=1)
+        )
+
+        result = await list_events(
+            db_session, portfolio_id=portfolio_id, to_date=now - timedelta(days=3)
+        )
+        assert result.total == 1
+
+    async def test_filter_by_date_range(self, db_session):
+        portfolio_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 10000, created_at=now - timedelta(days=10)
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 20000, created_at=now - timedelta(days=5)
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 30000, created_at=now - timedelta(days=1)
+        )
+
+        result = await list_events(
+            db_session,
+            portfolio_id=portfolio_id,
+            from_date=now - timedelta(days=7),
+            to_date=now - timedelta(days=2),
+        )
+        assert result.total == 1
+
+    async def test_inverted_date_range_returns_empty(self, db_session):
+        portfolio_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 10000, created_at=now - timedelta(days=3)
+        )
+
+        result = await list_events(
+            db_session,
+            portfolio_id=portfolio_id,
+            from_date=now - timedelta(days=1),
+            to_date=now - timedelta(days=5),
+        )
+        assert result.total == 0
 
 
 class TestGlobalAggregate:

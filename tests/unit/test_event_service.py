@@ -152,6 +152,31 @@ class TestIngestBatch:
         assert existing.event_id in event_ids
         assert new_event.event_id in event_ids
 
+    async def test_batch_unexpected_error_counted_as_failed(self, db_session, mock_redis):
+        """An unexpected exception for one event should count as failed, not crash the batch."""
+        from app.services import event_service
+
+        good1 = _make_event_create()
+        bad = _make_event_create()
+        good2 = _make_event_create()
+
+        original_build = event_service._build_event
+
+        def exploding_build(data):
+            if data.event_id == bad.event_id:
+                raise RuntimeError("simulated failure")
+            return original_build(data)
+
+        with patch.object(event_service, "_build_event", side_effect=exploding_build):
+            processed, dups, failed = await ingest_batch(db_session, [good1, bad, good2])
+
+        assert failed == 1
+        assert dups == 0
+        assert len(processed) == 2
+        event_ids = {e.event_id for e in processed}
+        assert good1.event_id in event_ids
+        assert good2.event_id in event_ids
+
 
 class TestComputeAmountSar:
     def test_sar_currency_no_conversion(self):
