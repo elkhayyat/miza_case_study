@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache.redis_client import (
@@ -12,6 +13,7 @@ from app.cache.redis_client import (
     portfolio_exposure_key,
     portfolio_summary_key,
 )
+from app.core.logging import get_logger
 from app.core.rate_limit import get_limiter
 from app.core.security import APIKeyInfo, require_api_key
 from app.db.session import get_db, get_session_factory
@@ -26,6 +28,7 @@ from app.services import analytics_service, audit_service
 
 router = APIRouter()
 limiter = get_limiter()
+logger = get_logger(__name__)
 
 
 @router.get(
@@ -44,10 +47,13 @@ async def get_portfolio_exposure(
 ) -> PortfolioExposureResponse:
     cache_key = portfolio_exposure_key(str(portfolio_id))
     cached = await cache_get(cache_key)
-    if cached:
-        result = PortfolioExposureResponse(**cached)
-        result.cache_hit = True
-        return result
+    if cached is not None:
+        try:
+            result = PortfolioExposureResponse.model_validate(cached)
+            result.cache_hit = True
+            return result
+        except ValidationError:
+            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
 
     result = await analytics_service.get_portfolio_exposure(db, portfolio_id)
     await cache_set(cache_key, result.model_dump(mode="json"))
@@ -81,10 +87,13 @@ async def get_portfolio_summary(
 ) -> PortfolioSummaryResponse:
     cache_key = portfolio_summary_key(str(portfolio_id))
     cached = await cache_get(cache_key)
-    if cached:
-        result = PortfolioSummaryResponse(**cached)
-        result.cache_hit = True
-        return result
+    if cached is not None:
+        try:
+            result = PortfolioSummaryResponse.model_validate(cached)
+            result.cache_hit = True
+            return result
+        except ValidationError:
+            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
 
     result = await analytics_service.get_portfolio_summary(db, portfolio_id)
     await cache_set(cache_key, result.model_dump(mode="json"))
@@ -148,10 +157,13 @@ async def get_global_aggregate(
 ) -> GlobalAggregateResponse:
     cache_key = global_aggregate_key()
     cached = await cache_get(cache_key)
-    if cached:
-        result = GlobalAggregateResponse(**cached)
-        result.cache_hit = True
-        return result
+    if cached is not None:
+        try:
+            result = GlobalAggregateResponse.model_validate(cached)
+            result.cache_hit = True
+            return result
+        except ValidationError:
+            logger.warning("Cache validation failed for key %s, falling through to DB", cache_key)
 
     result = await analytics_service.get_global_aggregate(db)
     await cache_set(cache_key, result.model_dump(mode="json"))

@@ -170,6 +170,25 @@ class TestBatchIngest:
         assert data["duplicates"] == 1
         assert data["accepted"] == 0
 
+    async def test_batch_exceeds_max_size(self, async_client, auth_headers):
+        events = [
+            {
+                "event_type": "ALLOCATION",
+                "portfolio_id": str(uuid.uuid4()),
+                "asset_id": str(uuid.uuid4()),
+                "asset_class": "EQUITY",
+                "amount": "1000",
+                "currency": "SAR",
+                "fx_rate_to_sar": "1.0",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            for _ in range(101)
+        ]
+        response = await async_client.post(
+            f"{BASE}/events/batch", json={"events": events}, headers=auth_headers
+        )
+        assert response.status_code == 422
+
 
 class TestGetEvent:
     async def test_get_existing_event(self, async_client, auth_headers, sample_event):

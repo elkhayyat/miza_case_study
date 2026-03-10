@@ -82,6 +82,26 @@ class TestPortfolioExposure:
         # 500K alloc - 100K redemption = 400K
         assert float(data["total_aum_sar"]) == pytest.approx(400_000.0)
 
+    async def test_exposure_negative_aum_no_crash(self, async_client, auth_headers):
+        """Negative AUM should not crash the exposure endpoint."""
+        portfolio_id = uuid.uuid4()
+        await _create_event(
+            async_client, auth_headers, portfolio_id, "EQUITY", 100000, "ALLOCATION"
+        )
+        await _create_event(
+            async_client, auth_headers, portfolio_id, "EQUITY", 200000, "REDEMPTION"
+        )
+
+        response = await async_client.get(
+            f"{BASE}/analytics/portfolio/{portfolio_id}/exposure",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert float(data["total_aum_sar"]) == pytest.approx(-100000.0)
+        for exposure in data["exposures"]:
+            assert exposure["allocation_pct"] == 0.0
+
     async def test_exposure_requires_auth(self, async_client):
         response = await async_client.get(f"{BASE}/analytics/portfolio/{uuid.uuid4()}/exposure")
         assert response.status_code == 401

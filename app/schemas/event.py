@@ -3,9 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.config import get_settings
 from app.models.event import AssetClass, EventStatus, EventType
 
 
@@ -58,14 +57,6 @@ class EventBatchCreate(BaseModel):
     """Schema for batch event ingestion."""
 
     events: list[EventCreate] = Field(min_length=1)
-
-    @model_validator(mode="after")
-    def check_batch_size(self) -> "EventBatchCreate":
-        max_size = get_settings().max_batch_size
-        if len(self.events) > max_size:
-            msg = f"Batch size {len(self.events)} exceeds maximum of {max_size}"
-            raise ValueError(msg)
-        return self
 
 
 class EventBaseResponse(BaseModel):

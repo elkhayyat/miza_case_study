@@ -80,6 +80,31 @@ class TestWriteAuditLog:
         )
         assert log.entity_id is None
 
+    async def test_same_request_id_allowed(self, db_session):
+        """Two audit entries with the same request_id should coexist."""
+        request_id = str(uuid.uuid4())
+        log1 = await write_audit_log(
+            db_session,
+            request_id=request_id,
+            action="CREATE_EVENT",
+            entity_type="InvestmentEvent",
+            entity_id=str(uuid.uuid4()),
+            api_key_id="test_client",
+            ip_address="127.0.0.1",
+        )
+        log2 = await write_audit_log(
+            db_session,
+            request_id=request_id,
+            action="QUERY_ANALYTICS",
+            entity_type="Portfolio",
+            entity_id=str(uuid.uuid4()),
+            api_key_id="test_client",
+            ip_address="127.0.0.1",
+        )
+        await db_session.commit()
+        assert log1.log_id != log2.log_id
+        assert log1.request_id == log2.request_id
+
 
 class TestWriteAuditLogBackground:
     async def test_counter_increments_after_all_retries_exhausted(self):
