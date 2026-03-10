@@ -92,7 +92,7 @@ def mock_redis():
         patch("app.cache.redis_client.cache_get", new_callable=AsyncMock, return_value=None),
         patch("app.cache.redis_client.cache_set", new_callable=AsyncMock),
         patch("app.cache.redis_client.cache_delete", new_callable=AsyncMock),
-        patch("app.cache.redis_client.cache_delete_pattern", new_callable=AsyncMock),
+        patch("app.cache.redis_client.cache_delete_many", new_callable=AsyncMock),
         patch(
             "app.cache.redis_client.check_redis_health", new_callable=AsyncMock, return_value=True
         ),

@@ -12,6 +12,7 @@ from app.cache.redis_client import (
     portfolio_exposure_key,
     portfolio_summary_key,
 )
+from app.core.rate_limit import get_limiter
 from app.core.security import APIKeyInfo, require_api_key
 from app.db.session import get_db, get_session_factory
 from app.models.event import AssetClass, EventType
@@ -24,6 +25,7 @@ from app.schemas.analytics import (
 from app.services import analytics_service, audit_service
 
 router = APIRouter()
+limiter = get_limiter()
 
 
 @router.get(
@@ -32,6 +34,7 @@ router = APIRouter()
     tags=["Analytics"],
     summary="Portfolio AUM breakdown by asset class",
 )
+@limiter.limit("200/minute")
 async def get_portfolio_exposure(
     portfolio_id: uuid.UUID,
     request: Request,
@@ -68,6 +71,7 @@ async def get_portfolio_exposure(
     tags=["Analytics"],
     summary="Portfolio summary: total AUM and event breakdown",
 )
+@limiter.limit("200/minute")
 async def get_portfolio_summary(
     portfolio_id: uuid.UUID,
     request: Request,
@@ -104,7 +108,9 @@ async def get_portfolio_summary(
     tags=["Analytics"],
     summary="Paginated investment event stream with filters",
 )
+@limiter.limit("200/minute")
 async def list_events(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
     portfolio_id: uuid.UUID | None = Query(default=None),
@@ -133,6 +139,7 @@ async def list_events(
     tags=["Analytics"],
     summary="Global AUM and asset class breakdown across all portfolios",
 )
+@limiter.limit("200/minute")
 async def get_global_aggregate(
     request: Request,
     background_tasks: BackgroundTasks,
