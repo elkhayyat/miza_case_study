@@ -1,7 +1,7 @@
 """Unit tests for Pydantic schemas."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -71,6 +71,35 @@ class TestEventCreate:
         with pytest.raises(ValueError):
             EventCreate(**self._base_data(asset_class="CRYPTO"))
 
+    def test_created_at_too_far_in_past_rejected(self):
+        old = (datetime.now(UTC) - timedelta(days=31)).isoformat()
+        with pytest.raises(ValueError, match="30 days in the past"):
+            EventCreate(**self._base_data(created_at=old))
+
+    def test_created_at_too_far_in_future_rejected(self):
+        future = (datetime.now(UTC) + timedelta(minutes=10)).isoformat()
+        with pytest.raises(ValueError, match="5 minutes in the future"):
+            EventCreate(**self._base_data(created_at=future))
+
+    def test_created_at_within_bounds_accepted(self):
+        recent = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+        event = EventCreate(**self._base_data(created_at=recent))
+        assert event.created_at is not None
+
+    def test_metadata_exceeds_size_limit_rejected(self):
+        large_metadata = {"key": "x" * 5000}
+        with pytest.raises(ValueError, match="4096 bytes"):
+            EventCreate(**self._base_data(metadata=large_metadata))
+
+    def test_metadata_within_limit_accepted(self):
+        small_metadata = {"key": "value"}
+        event = EventCreate(**self._base_data(metadata=small_metadata))
+        assert event.metadata == {"key": "value"}
+
+    def test_notes_exceeds_max_length_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(notes="x" * 1001))
+
 
 class TestEventBatchCreate:
     def _single_event_data(self) -> dict:
@@ -97,3 +126,8 @@ class TestEventBatchCreate:
         events = [self._single_event_data() for _ in range(100)]
         batch = EventBatchCreate(events=events)
         assert len(batch.events) == 100
+
+    def test_batch_exceeds_max_length_rejected(self):
+        events = [self._single_event_data() for _ in range(101)]
+        with pytest.raises(ValueError):
+            EventBatchCreate(events=events)

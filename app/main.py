@@ -87,7 +87,15 @@ def create_app() -> FastAPI:
     async def request_id_middleware(
         request: Request, call_next: Callable[..., Awaitable[Response]]
     ) -> Response:
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        raw_request_id = request.headers.get("X-Request-ID")
+        if raw_request_id is not None:
+            try:
+                uuid.UUID(raw_request_id)
+                request_id = raw_request_id
+            except ValueError:
+                request_id = str(uuid.uuid4())
+        else:
+            request_id = str(uuid.uuid4())
         request.state.request_id = request_id
         set_request_id(request_id)
 

@@ -201,3 +201,18 @@ class TestGetEvent:
     async def test_get_nonexistent_event_returns_404(self, async_client, auth_headers):
         response = await async_client.get(f"{BASE}/events/{uuid.uuid4()}", headers=auth_headers)
         assert response.status_code == 404
+
+
+class TestRequestIdValidation:
+    async def test_invalid_request_id_replaced(self, async_client, auth_headers):
+        headers = {**auth_headers, "X-Request-ID": "not-a-uuid"}
+        response = await async_client.get(f"{BASE}/events/{uuid.uuid4()}", headers=headers)
+        returned_id = response.headers.get("X-Request-ID")
+        assert returned_id != "not-a-uuid"
+        uuid.UUID(returned_id)  # should not raise
+
+    async def test_valid_request_id_preserved(self, async_client, auth_headers):
+        valid_id = str(uuid.uuid4())
+        headers = {**auth_headers, "X-Request-ID": valid_id}
+        response = await async_client.get(f"{BASE}/events/{uuid.uuid4()}", headers=headers)
+        assert response.headers.get("X-Request-ID") == valid_id
