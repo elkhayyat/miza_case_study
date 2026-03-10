@@ -3,13 +3,18 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, case, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache.redis_client import cache_delete_pattern
+from app.cache.redis_client import (
+    cache_delete_many,
+    global_aggregate_key,
+    portfolio_exposure_key,
+    portfolio_summary_key,
+)
 from app.core.logging import get_logger
-from app.models.event import EventStatus, InvestmentEvent
+from app.models.event import EventStatus, EventType, InvestmentEvent
 from app.schemas.event import EventCreate
 
 logger = get_logger(__name__)
@@ -69,8 +74,14 @@ async def ingest_event(
     await db.flush()
 
     # Invalidate cached analytics for this portfolio
-    await cache_delete_pattern(f"analytics:portfolio:{event.portfolio_id}:*")
-    await cache_delete_pattern("analytics:global:*")
+    pid = str(event.portfolio_id)
+    await cache_delete_many(
+        [
+            portfolio_exposure_key(pid),
+            portfolio_summary_key(pid),
+            global_aggregate_key(),
+        ]
+    )
 
     return event, False
 
@@ -113,23 +124,30 @@ async def ingest_batch(
             logger.exception("Unexpected error ingesting event_id=%s", data.event_id)
             failed_count += 1
 
-    for portfolio_id in invalidated_portfolios:
-        await cache_delete_pattern(f"analytics:portfolio:{portfolio_id}:*")
     if invalidated_portfolios:
-        await cache_delete_pattern("analytics:global:*")
+        keys = [global_aggregate_key()]
+        for pid in invalidated_portfolios:
+            keys.append(portfolio_exposure_key(pid))
+            keys.append(portfolio_summary_key(pid))
+        await cache_delete_many(keys)
 
     return processed, duplicate_count, failed_count
 
 
 def amount_sar_expr() -> ColumnElement[Any]:
-    """SQL expression for amount * fx_rate_to_sar (for use in queries).
+    """SQL expression: signed amount * fx_rate_to_sar.
 
-    This is the SQL-level equivalent of ``compute_amount_sar`` for in-memory
-    computation.
+    REDEMPTION events are negative (subtract from AUM); all other event types
+    (ALLOCATION, TRANSFER, VALUATION_UPDATE) are positive.
     """
-    return InvestmentEvent.amount * InvestmentEvent.fx_rate_to_sar
+    signed = case(
+        (InvestmentEvent.event_type == EventType.REDEMPTION, -InvestmentEvent.amount),
+        else_=InvestmentEvent.amount,
+    )
+    return signed * InvestmentEvent.fx_rate_to_sar
 
 
 def compute_amount_sar(event: InvestmentEvent) -> Decimal:
-    """Python-level equivalent of ``amount_sar_expr`` for in-memory objects."""
-    return event.amount * event.fx_rate_to_sar
+    """Python-level equivalent of ``amount_sar_expr``."""
+    sign = Decimal("-1") if event.event_type == EventType.REDEMPTION else Decimal("1")
+    return sign * event.amount * event.fx_rate_to_sar

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.metrics import event_ingestion
+from app.core.rate_limit import get_limiter
 from app.core.security import APIKeyInfo, require_api_key
 from app.db.session import get_db, get_session_factory
 from app.models.event import InvestmentEvent
@@ -14,6 +15,7 @@ from app.schemas.event import BatchEventResponse, EventBatchCreate, EventCreate,
 from app.services import audit_service, event_service
 
 router = APIRouter()
+limiter = get_limiter()
 
 
 def _event_to_response(event: InvestmentEvent) -> EventResponse:
@@ -43,6 +45,7 @@ def _event_to_response(event: InvestmentEvent) -> EventResponse:
     tags=["Events"],
     summary="Ingest a single investment event",
 )
+@limiter.limit("100/minute")
 async def ingest_event(
     request: Request,
     data: EventCreate,
@@ -85,6 +88,7 @@ async def ingest_event(
     tags=["Events"],
     summary="Ingest a batch of investment events (max 100)",
 )
+@limiter.limit("20/minute")
 async def ingest_batch(
     request: Request,
     data: EventBatchCreate,
@@ -131,6 +135,7 @@ async def ingest_batch(
     tags=["Events"],
     summary="Retrieve a single event by ID",
 )
+@limiter.limit("200/minute")
 async def get_event(
     event_id: uuid.UUID,
     request: Request,

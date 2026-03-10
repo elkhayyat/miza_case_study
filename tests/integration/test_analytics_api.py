@@ -64,6 +64,24 @@ class TestPortfolioExposure:
         total_pct = sum(e["allocation_pct"] for e in data["exposures"])
         assert total_pct == pytest.approx(100.0, rel=0.01)
 
+    async def test_exposure_with_redemption(self, async_client, auth_headers):
+        portfolio_id = uuid.uuid4()
+        await _create_event(
+            async_client, auth_headers, portfolio_id, "PRIVATE_EQUITY", 500000, "ALLOCATION"
+        )
+        await _create_event(
+            async_client, auth_headers, portfolio_id, "PRIVATE_EQUITY", 100000, "REDEMPTION"
+        )
+
+        response = await async_client.get(
+            f"{BASE}/analytics/portfolio/{portfolio_id}/exposure",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # 500K alloc - 100K redemption = 400K
+        assert float(data["total_aum_sar"]) == pytest.approx(400_000.0)
+
     async def test_exposure_requires_auth(self, async_client):
         response = await async_client.get(f"{BASE}/analytics/portfolio/{uuid.uuid4()}/exposure")
         assert response.status_code == 401
@@ -98,6 +116,8 @@ class TestPortfolioSummary:
         assert data["total_events"] == 3
         assert data["allocations"] == 2
         assert data["redemptions"] == 1
+        # AUM: 200K + 100K alloc - 50K redemption = 250K
+        assert float(data["total_aum_sar"]) == pytest.approx(250_000.0)
 
 
 class TestEventsList:

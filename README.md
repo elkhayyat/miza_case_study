@@ -206,7 +206,7 @@ The builder stage installs dependencies; the runtime stage copies only the virtu
 - **Secrets management**: Replace env-var API keys with HashiCorp Vault or AWS Secrets Manager
 - **Database connection pooling**: PgBouncer in front of PostgreSQL for 10,000+ connection support
 - **Observability**: Structured JSON logs are SIEM-compatible; add OpenTelemetry for distributed tracing
-- **Rate limiting**: Implement per-client rate limits via Redis counters (framework exists, not enforced at request level)
+- **Rate limiting**: Per-client rate limits enforced via slowapi — ingestion at 100 req/min, batch at 20 req/min, reads at 200 req/min
 - **TLS termination**: Place an nginx/ALB in front of the service in production
 - **Backup and recovery**: Continuous WAL archiving for PostgreSQL; Redis persistence with AOF
 - **Migration safety**: All Alembic migrations include `downgrade()` for rollback capability
@@ -218,7 +218,7 @@ The builder stage installs dependencies; the runtime stage copies only the virtu
 
 | Assumption | Impact |
 |---|---|
-| `amount` in events is always positive | Simplifies ledger model; a full double-entry ledger would track debits/credits |
+| `amount` in events is always positive | REDEMPTION events are subtracted from AUM via sign logic in the analytics engine; a full double-entry ledger would track debits/credits separately |
 | FX rates are supplied by the client | No real-time FX feed integration — caller is responsible for accurate rates |
 | API keys are long-lived | No token expiry or rotation — production would need TTL + rotation |
 | Single-region deployment | No cross-region replication for Redis or PostgreSQL |
@@ -241,7 +241,7 @@ The builder stage installs dependencies; the runtime stage copies only the virtu
 GitHub Actions runs on every push and pull request:
 
 ```
-lint (ruff) → test (pytest, 70%+ coverage) → docker build + push
+lint (ruff + mypy) → test (SQLite) + test (PostgreSQL) → docker build + push
 ```
 
 Docker images are tagged:

@@ -71,19 +71,15 @@ async def cache_delete(key: str) -> None:
         logger.warning("Redis DELETE failed", extra={"key": key, "error": str(exc)})
 
 
-async def cache_delete_pattern(pattern: str) -> None:
-    """Invalidate all keys matching a glob pattern using SCAN."""
+async def cache_delete_many(keys: list[str]) -> None:
+    """Delete a known list of cache keys in a single round-trip."""
+    if not keys:
+        return
     try:
         client = get_redis()
-        cursor = 0
-        while True:
-            cursor, keys = await client.scan(cursor=cursor, match=pattern, count=100)
-            if keys:
-                await client.delete(*keys)
-            if cursor == 0:
-                break
+        await client.delete(*keys)
     except Exception as exc:
-        logger.warning("Redis SCAN/DELETE failed", extra={"pattern": pattern, "error": str(exc)})
+        logger.warning("Redis DELETE failed", extra={"keys": keys, "error": str(exc)})
 
 
 def portfolio_exposure_key(portfolio_id: str) -> str:
