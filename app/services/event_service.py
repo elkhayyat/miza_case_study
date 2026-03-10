@@ -126,8 +126,14 @@ async def ingest_batch(
             processed.append(event)
             invalidated_portfolios.add(str(event.portfolio_id))
         except IntegrityError:
-            logger.warning("Data integrity violation for event_id=%s, skipping", data.event_id)
-            failed_count += 1
+            # Concurrent duplicate — re-fetch before counting as failed
+            existing_dup = await get_event_by_id(db, data.event_id)
+            if existing_dup is not None:
+                duplicate_count += 1
+                processed.append(existing_dup)
+            else:
+                logger.warning("Data integrity violation for event_id=%s, skipping", data.event_id)
+                failed_count += 1
         except Exception:
             logger.exception("Unexpected error ingesting event_id=%s", data.event_id)
             failed_count += 1

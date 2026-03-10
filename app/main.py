@@ -23,7 +23,6 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    configure_logging()
     settings = get_settings()
     logger.info(
         "Starting %s v%s [%s]",

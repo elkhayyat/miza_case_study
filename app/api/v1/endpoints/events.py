@@ -20,6 +20,8 @@ limiter = get_limiter()
 
 
 def _event_to_response(event: InvestmentEvent) -> EventResponse:
+    # Decimal(str()) ensures consistent types: asyncpg returns Decimal natively,
+    # but aiosqlite (used in tests) returns float for Numeric columns.
     return EventResponse(
         event_id=event.event_id,
         event_type=event.event_type,
