@@ -23,7 +23,10 @@ class EventCreate(BaseModel):
     event_type: EventType
     portfolio_id: uuid.UUID
     asset_id: str = Field(
-        min_length=1, max_length=20, description="Asset identifier (e.g. ticker symbol, ISIN)"
+        min_length=1,
+        max_length=20,
+        pattern=r"^[A-Z0-9][A-Z0-9.\-]*$",
+        description="Asset identifier (ticker, ISIN, etc). Uppercase alphanumeric.",
     )
     asset_class: AssetClass
     amount: Decimal = Field(gt=0, description="Transaction amount in the given currency")
@@ -39,6 +42,13 @@ class EventCreate(BaseModel):
     )
     metadata: dict[str, Any] | None = Field(default=None, description="Arbitrary JSON metadata")
     notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("asset_id", mode="before")
+    @classmethod
+    def asset_id_normalise(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip().upper()
+        return v
 
     @field_validator("currency")
     @classmethod

@@ -101,10 +101,42 @@ class TestEventCreate:
             EventCreate(**self._base_data(created_at="2026-03-09T10:00:00"))
 
     def test_created_at_defaults_to_now(self):
+        before = datetime.now(UTC)
         data = self._base_data()
         del data["created_at"]
         event = EventCreate(**data)
-        assert event.created_at is not None
+        after = datetime.now(UTC)
+        assert before <= event.created_at <= after
+
+    def test_asset_id_empty_string_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(asset_id=""))
+
+    def test_asset_id_too_long_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(asset_id="A" * 21))
+
+    def test_asset_id_max_length_accepted(self):
+        event = EventCreate(**self._base_data(asset_id="A" * 20))
+        assert len(event.asset_id) == 20
+
+    def test_asset_id_uppercased(self):
+        event = EventCreate(**self._base_data(asset_id="aapl"))
+        assert event.asset_id == "AAPL"
+
+    def test_asset_id_whitespace_only_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(asset_id="   "))
+
+    def test_asset_id_special_chars_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(asset_id="AA@#"))
+
+    def test_asset_id_with_dot_and_dash_accepted(self):
+        event = EventCreate(**self._base_data(asset_id="BRK.B"))
+        assert event.asset_id == "BRK.B"
+        event2 = EventCreate(**self._base_data(asset_id="X-123"))
+        assert event2.asset_id == "X-123"
 
     def test_notes_exceeds_max_length_rejected(self):
         with pytest.raises(ValueError):

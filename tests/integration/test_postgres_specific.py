@@ -1,7 +1,8 @@
 """PostgreSQL-specific integration tests.
 
 These tests verify behaviors that SQLite cannot catch:
-- Native UUID round-trip
+- Native UUID round-trip (event_id, portfolio_id)
+- String asset_id round-trip
 - Numeric precision with large amounts
 - CHECK constraint enforcement at the DB level
 """
@@ -19,8 +20,8 @@ from app.models.event import AssetClass, EventStatus, EventType, InvestmentEvent
 pytestmark = pytest.mark.postgres
 
 
-async def test_uuid_roundtrip(pg_session):
-    """Verify native PostgreSQL UUID storage and retrieval."""
+async def test_event_id_uuid_roundtrip(pg_session):
+    """Verify native PostgreSQL UUID storage and retrieval for event_id."""
     event_id = uuid.uuid4()
     now = datetime.now(UTC)
     event = InvestmentEvent(
@@ -46,6 +47,34 @@ async def test_uuid_roundtrip(pg_session):
     loaded = result.scalar_one()
     assert loaded.event_id == event_id
     assert isinstance(loaded.event_id, uuid.UUID)
+
+
+async def test_asset_id_string_roundtrip(pg_session):
+    """Verify VARCHAR(20) asset_id stores and retrieves correctly."""
+    now = datetime.now(UTC)
+    event = InvestmentEvent(
+        event_id=uuid.uuid4(),
+        event_type=EventType.ALLOCATION,
+        portfolio_id=uuid.uuid4(),
+        asset_id="US0378331005",
+        asset_class=AssetClass.EQUITY,
+        amount=Decimal("50000"),
+        currency="SAR",
+        fx_rate_to_sar=Decimal("1.0"),
+        status=EventStatus.PROCESSED,
+        created_at=now,
+        ingested_at=now,
+        processed_at=now,
+    )
+    pg_session.add(event)
+    await pg_session.flush()
+
+    result = await pg_session.execute(
+        select(InvestmentEvent).where(InvestmentEvent.event_id == event.event_id)
+    )
+    loaded = result.scalar_one()
+    assert loaded.asset_id == "US0378331005"
+    assert isinstance(loaded.asset_id, str)
 
 
 async def test_large_amount_precision(pg_session):

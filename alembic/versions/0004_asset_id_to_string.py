@@ -24,9 +24,20 @@ def upgrade() -> None:
         existing_nullable=False,
         postgresql_using="asset_id::text",
     )
+    op.create_index("ix_investment_events_asset_id", "investment_events", ["asset_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_investment_events_asset_id", table_name="investment_events")
+    # Rows with non-UUID asset_id values (e.g. ticker symbols) cannot be
+    # cast back to UUID. Remove them before reverting the column type.
+    op.execute(
+        sa.text(
+            "DELETE FROM investment_events "
+            "WHERE asset_id !~ "
+            "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+        )
+    )
     op.alter_column(
         "investment_events",
         "asset_id",

@@ -127,12 +127,13 @@ def make_event_data(
     asset_class: AssetClass = AssetClass.PRIVATE_EQUITY,
     amount: Decimal = Decimal("100000"),
     currency: str = "SAR",
+    asset_id: str = "AAPL",
 ) -> dict[str, Any]:
     return {
         "event_id": str(uuid.uuid4()),
         "event_type": event_type.value,
         "portfolio_id": str(portfolio_id or uuid.uuid4()),
-        "asset_id": "AAPL",
+        "asset_id": asset_id,
         "asset_class": asset_class.value,
         "amount": str(amount),
         "currency": currency,

@@ -82,6 +82,7 @@ class InvestmentEvent(Base):
 
     __table_args__ = (
         CheckConstraint("amount > 0", name="ck_amount_positive"),
+        Index("ix_investment_events_asset_id", "asset_id"),
         Index("ix_investment_events_portfolio_id", "portfolio_id"),
         Index("ix_investment_events_asset_class", "asset_class"),
         Index("ix_investment_events_event_type", "event_type"),
