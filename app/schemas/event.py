@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.event import AssetClass, EventStatus, EventType
 
@@ -31,7 +31,9 @@ class EventCreate(BaseModel):
         gt=0,
         description="FX rate to convert currency to SAR (1.0 for SAR)",
     )
-    created_at: datetime = Field(description="Event timestamp (client-side)")
+    created_at: AwareDatetime = Field(
+        description="Event timestamp (client-side, must include timezone)",
+    )
     metadata: dict[str, Any] | None = Field(default=None, description="Arbitrary JSON metadata")
     notes: str | None = Field(default=None, max_length=1000)
 
@@ -42,7 +44,7 @@ class EventCreate(BaseModel):
 
     @field_validator("created_at")
     @classmethod
-    def created_at_within_bounds(cls, v: datetime) -> datetime:
+    def created_at_within_bounds(cls, v: AwareDatetime) -> AwareDatetime:
         now = datetime.now(UTC)
         if v < now - _CREATED_AT_MAX_AGE:
             msg = "created_at must not be more than 30 days in the past"

@@ -96,6 +96,10 @@ class TestEventCreate:
         event = EventCreate(**self._base_data(metadata=small_metadata))
         assert event.metadata == {"key": "value"}
 
+    def test_naive_datetime_rejected(self):
+        with pytest.raises(ValueError):
+            EventCreate(**self._base_data(created_at="2026-03-09T10:00:00"))
+
     def test_notes_exceeds_max_length_rejected(self):
         with pytest.raises(ValueError):
             EventCreate(**self._base_data(notes="x" * 1001))

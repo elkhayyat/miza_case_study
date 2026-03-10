@@ -96,6 +96,8 @@ async def ingest_batch(
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> BatchEventResponse:
+    # Schema-level max_length=100 on EventBatchCreate enforces this for HTTP callers.
+    # This check is belt-and-braces for programmatic callers that bypass schema validation.
     settings = get_settings()
     if len(data.events) > settings.max_batch_size:
         raise HTTPException(

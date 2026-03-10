@@ -45,6 +45,17 @@ async def _cached_analytics[
     entity_id: str | None,
 ) -> CacheableT:
     """Cache-aside helper shared by cached analytics endpoints."""
+    background_tasks.add_task(
+        audit_service.write_audit_log_background,
+        session_factory=get_session_factory(),
+        request_id=request.state.request_id,
+        action="QUERY_ANALYTICS",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        api_key_id=api_key.client_id,
+        ip_address=request.client.host if request.client else "unknown",
+    )
+
     cached = await cache_get(cache_key)
     if cached is not None:
         try:
@@ -56,17 +67,6 @@ async def _cached_analytics[
 
     result = await compute()
     await cache_set(cache_key, result.model_dump(mode="json"))
-
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
-        request_id=request.state.request_id,
-        action="QUERY_ANALYTICS",
-        entity_type=entity_type,
-        entity_id=entity_id,
-        api_key_id=api_key.client_id,
-        ip_address=request.client.host if request.client else "unknown",
-    )
     return result
 
 
@@ -131,6 +131,7 @@ async def get_portfolio_summary(
 @limiter.limit("200/minute")
 async def list_events(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
     portfolio_id: uuid.UUID | None = Query(default=None),
@@ -141,6 +142,16 @@ async def list_events(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> EventsListResponse:
+    background_tasks.add_task(
+        audit_service.write_audit_log_background,
+        session_factory=get_session_factory(),
+        request_id=request.state.request_id,
+        action="QUERY_ANALYTICS",
+        entity_type="EventsList",
+        entity_id=str(portfolio_id) if portfolio_id else None,
+        api_key_id=api_key.client_id,
+        ip_address=request.client.host if request.client else "unknown",
+    )
     return await analytics_service.list_events(
         db,
         portfolio_id=portfolio_id,
