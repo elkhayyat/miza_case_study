@@ -7,9 +7,9 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache.redis_client import (
+    GLOBAL_AGGREGATE_KEY,
     cache_get,
     cache_set,
-    global_aggregate_key,
     portfolio_exposure_key,
     portfolio_summary_key,
 )
@@ -155,7 +155,7 @@ async def get_global_aggregate(
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> GlobalAggregateResponse:
-    cache_key = global_aggregate_key()
+    cache_key = GLOBAL_AGGREGATE_KEY
     cached = await cache_get(cache_key)
     if cached is not None:
         try:

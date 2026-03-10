@@ -62,15 +62,6 @@ async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
         logger.warning("Redis SET failed", extra={"key": key, "error": str(exc)})
 
 
-async def cache_delete(key: str) -> None:
-    """Invalidate a cache key."""
-    try:
-        client = get_redis()
-        await client.delete(key)
-    except Exception as exc:
-        logger.warning("Redis DELETE failed", extra={"key": key, "error": str(exc)})
-
-
 async def cache_delete_many(keys: list[str]) -> None:
     """Delete a known list of cache keys in a single round-trip."""
     if not keys:
@@ -90,8 +81,7 @@ def portfolio_summary_key(portfolio_id: str) -> str:
     return f"analytics:portfolio:{portfolio_id}:summary"
 
 
-def global_aggregate_key() -> str:
-    return "analytics:global:aggregate"
+GLOBAL_AGGREGATE_KEY: str = "analytics:global:aggregate"
 
 
 async def check_redis_health() -> bool:

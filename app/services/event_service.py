@@ -8,8 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache.redis_client import (
+    GLOBAL_AGGREGATE_KEY,
     cache_delete_many,
-    global_aggregate_key,
     portfolio_exposure_key,
     portfolio_summary_key,
 )
@@ -87,7 +87,7 @@ async def ingest_event(
         [
             portfolio_exposure_key(pid),
             portfolio_summary_key(pid),
-            global_aggregate_key(),
+            GLOBAL_AGGREGATE_KEY,
         ]
     )
 
@@ -139,7 +139,7 @@ async def ingest_batch(
             failed_count += 1
 
     if invalidated_portfolios:
-        keys = [global_aggregate_key()]
+        keys = [GLOBAL_AGGREGATE_KEY]
         for pid in invalidated_portfolios:
             keys.append(portfolio_exposure_key(pid))
             keys.append(portfolio_summary_key(pid))
