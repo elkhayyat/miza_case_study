@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.metrics import event_ingestion
 from app.core.rate_limit import get_limiter
 from app.core.security import APIKeyInfo, require_api_key
-from app.db.session import get_db
+from app.db.session import get_db, get_session_factory
 from app.models.event import InvestmentEvent
 from app.schemas.event import BatchEventResponse, EventBatchCreate, EventCreate, EventResponse
 from app.services import audit_service, event_service
@@ -146,10 +146,22 @@ async def ingest_batch(
 async def get_event(
     event_id: uuid.UUID,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> EventResponse:
     event = await event_service.get_event_by_id(db, event_id)
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    background_tasks.add_task(
+        audit_service.write_audit_log_background,
+        session_factory=get_session_factory(),
+        request_id=request.state.request_id,
+        action="READ_EVENT",
+        entity_type="InvestmentEvent",
+        entity_id=str(event_id),
+        api_key_id=api_key.client_id,
+        ip_address=request.client.host if request.client else "unknown",
+    )
     return _event_to_response(event)
