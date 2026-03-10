@@ -31,7 +31,7 @@ class AuditLog(Base):
     )
 
     __table_args__ = (
-        Index("ix_audit_logs_request_id", "request_id", unique=True),
+        Index("ix_audit_logs_request_id", "request_id"),
         Index("ix_audit_logs_api_key_id", "api_key_id"),
         Index("ix_audit_logs_timestamp", "timestamp"),
         Index("ix_audit_logs_action", "action"),

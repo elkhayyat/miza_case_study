@@ -5,6 +5,7 @@ from decimal import Decimal
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.models.event import AssetClass, EventType, InvestmentEvent
 from app.schemas.analytics import (
     AssetClassExposure,
@@ -15,6 +16,8 @@ from app.schemas.analytics import (
     PortfolioSummaryResponse,
 )
 from app.services.event_service import amount_sar_expr, compute_amount_sar
+
+logger = get_logger(__name__)
 
 
 async def get_portfolio_exposure(
@@ -40,11 +43,16 @@ async def get_portfolio_exposure(
         total_sar += amount
         exposures.append((row.asset_class, amount, row.event_count))
 
+    if total_sar < 0:
+        logger.warning("Negative total AUM for portfolio %s: %s SAR", portfolio_id, total_sar)
+
     exposure_list = [
         AssetClassExposure(
             asset_class=ac,
             amount_sar=amount,
-            allocation_pct=round(float(amount / total_sar * 100), 2) if total_sar > 0 else 0.0,
+            allocation_pct=max(0.0, min(100.0, round(float(amount / total_sar * 100), 2)))
+            if total_sar > 0
+            else 0.0,
             event_count=cnt,
         )
         for ac, amount, cnt in exposures
@@ -177,6 +185,9 @@ async def get_global_aggregate(db: AsyncSession) -> GlobalAggregateResponse:
     total_portfolios = totals.total_portfolios or 0
     total_events = totals.total_events or 0
 
+    if total_aum < 0:
+        logger.warning("Negative global AUM detected: %s SAR", total_aum)
+
     # Group-by query for asset class breakdown
     asset_rows = await db.execute(
         select(
@@ -190,7 +201,10 @@ async def get_global_aggregate(db: AsyncSession) -> GlobalAggregateResponse:
         AssetClassExposure(
             asset_class=row.asset_class,
             amount_sar=Decimal(str(row.amount_sar)),
-            allocation_pct=round(float(Decimal(str(row.amount_sar)) / total_aum * 100), 2)
+            allocation_pct=max(
+                0.0,
+                min(100.0, round(float(Decimal(str(row.amount_sar)) / total_aum * 100), 2)),
+            )
             if total_aum > 0
             else 0.0,
             event_count=row.event_count,

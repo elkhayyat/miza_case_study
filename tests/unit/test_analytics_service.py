@@ -110,6 +110,21 @@ class TestGetPortfolioExposure:
         assert r1.total_aum_sar == Decimal("1000000")
         assert r2.total_aum_sar == Decimal("500000")
 
+    async def test_negative_aum_clamped(self, db_session):
+        """When redemptions exceed allocations, allocation_pct should be 0.0."""
+        portfolio_id = uuid.uuid4()
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 100000, EventType.ALLOCATION
+        )
+        await _persist_event(
+            db_session, portfolio_id, AssetClass.EQUITY, 200000, EventType.REDEMPTION
+        )
+
+        result = await get_portfolio_exposure(db_session, portfolio_id)
+        assert result.total_aum_sar == Decimal("-100000")
+        assert len(result.exposures) == 1
+        assert result.exposures[0].allocation_pct == 0.0
+
 
 class TestGetPortfolioSummary:
     async def test_empty_portfolio(self, db_session):

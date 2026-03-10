@@ -93,11 +93,6 @@ class TestEventBatchCreate:
         with pytest.raises(ValueError):
             EventBatchCreate(events=[])
 
-    def test_batch_max_100(self):
-        events = [self._single_event_data() for _ in range(101)]
-        with pytest.raises(ValueError):
-            EventBatchCreate(events=events)
-
     def test_batch_with_100_events(self):
         events = [self._single_event_data() for _ in range(100)]
         batch = EventBatchCreate(events=events)

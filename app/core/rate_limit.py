@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -14,6 +16,7 @@ def _key_func(request: Request) -> str:
     return get_remote_address(request)
 
 
+@lru_cache
 def get_limiter() -> Limiter:
     settings = get_settings()
     default_limit = f"{settings.rate_limit_requests}/{settings.rate_limit_window_seconds}second"

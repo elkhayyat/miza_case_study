@@ -62,6 +62,31 @@ class TestIngestEvent:
             await ingest_event(db_session, data)
             assert mock_del.called
 
+    async def test_concurrent_duplicate_handled(self, db_session, mock_redis):
+        """TOCTOU: when SELECT misses a concurrent insert, IntegrityError is caught."""
+        from app.services import event_service
+
+        data = _make_event_create()
+        event1, _ = await ingest_event(db_session, data)
+        await db_session.commit()
+
+        # Save original before patching
+        real_get = event_service.get_event_by_id
+        call_count = 0
+
+        async def mock_get(db, event_id):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None  # Simulate race: not found on first check
+            return await real_get(db, event_id)
+
+        with patch.object(event_service, "get_event_by_id", side_effect=mock_get):
+            event2, is_dup = await ingest_event(db_session, data)
+
+        assert is_dup is True
+        assert event2.event_id == event1.event_id
+
 
 class TestIngestBatch:
     async def test_batch_all_new(self, db_session, mock_redis):

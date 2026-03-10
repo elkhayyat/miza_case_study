@@ -17,6 +17,7 @@ from app.core.metrics import rate_limit_hits
 from app.core.rate_limit import get_limiter
 from app.core.tracing import setup_tracing
 
+configure_logging()
 logger = get_logger(__name__)
 
 

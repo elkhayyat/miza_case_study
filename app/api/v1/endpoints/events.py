@@ -2,14 +2,15 @@ import uuid
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.metrics import event_ingestion
 from app.core.rate_limit import get_limiter
 from app.core.security import APIKeyInfo, require_api_key
-from app.db.session import get_db, get_session_factory
+from app.db.session import get_db
 from app.models.event import InvestmentEvent
 from app.schemas.event import BatchEventResponse, EventBatchCreate, EventCreate, EventResponse
 from app.services import audit_service, event_service
@@ -49,7 +50,6 @@ def _event_to_response(event: InvestmentEvent) -> EventResponse:
 async def ingest_event(
     request: Request,
     data: EventCreate,
-    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> EventResponse | JSONResponse:
@@ -59,9 +59,8 @@ async def ingest_event(
     event, is_duplicate = await event_service.ingest_event(db, data)
     event_ingestion.labels(status="duplicate" if is_duplicate else "accepted").inc()
 
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
+    await audit_service.write_audit_log(
+        db,
         request_id=request_id,
         action="CREATE_EVENT",
         entity_type="InvestmentEvent",
@@ -92,10 +91,16 @@ async def ingest_event(
 async def ingest_batch(
     request: Request,
     data: EventBatchCreate,
-    background_tasks: BackgroundTasks,
     db: Annotated[AsyncSession, Depends(get_db)],
     api_key: Annotated[APIKeyInfo, Depends(require_api_key)],
 ) -> BatchEventResponse:
+    settings = get_settings()
+    if len(data.events) > settings.max_batch_size:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Batch size {len(data.events)} exceeds maximum of {settings.max_batch_size}",
+        )
+
     request_id = request.state.request_id
     client_ip = request.client.host if request.client else "unknown"
 
@@ -104,9 +109,9 @@ async def ingest_batch(
     event_ingestion.labels(status="duplicate").inc(duplicates)
     event_ingestion.labels(status="failed").inc(failed)
 
-    background_tasks.add_task(
-        audit_service.write_audit_log_background,
-        session_factory=get_session_factory(),
+    accepted = len(events) - duplicates - failed
+    await audit_service.write_audit_log(
+        db,
         request_id=request_id,
         action="CREATE_BATCH_EVENTS",
         entity_type="InvestmentEvent",
@@ -115,7 +120,7 @@ async def ingest_batch(
         ip_address=client_ip,
         payload={
             "submitted": len(data.events),
-            "accepted": len(events) - duplicates,
+            "accepted": accepted,
             "duplicates": duplicates,
             "failed": failed,
         },

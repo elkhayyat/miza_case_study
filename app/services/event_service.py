@@ -70,8 +70,16 @@ async def ingest_event(
         return existing, True
 
     event = _build_event(data)
-    db.add(event)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(event)
+            await db.flush()
+    except IntegrityError:
+        # Concurrent duplicate — savepoint rolled back, re-fetch the winning row
+        existing = await get_event_by_id(db, data.event_id)
+        if existing is not None:
+            return existing, True
+        raise
 
     # Invalidate cached analytics for this portfolio
     pid = str(event.portfolio_id)
